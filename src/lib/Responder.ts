@@ -217,6 +217,8 @@ class Responder extends EventTarget {
     const iface = this.ifaces.get(ifaceName);
     if (typeof iface === 'undefined') throw new Error('Invalid interface');
 
+    // Implement probing before this point.
+
     const localTLD = ".local";
 
     const fullServiceType = serviceType + localTLD;
@@ -283,6 +285,8 @@ class Responder extends EventTarget {
         ...answers
       ].map((e) => { (e as any).flush = true; return e }),
     };
+
+    console.log(JSON.stringify(advertPacket, null, 4));
 
     await this.sendPacket(advertPacket, iface);
 

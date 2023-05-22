@@ -42,6 +42,7 @@
     "uuid": "^8.3.0"
   },
   "devDependencies": {
+    "@fast-check/jest": "^1.6.2",
     "@swc/core": "^1.2.215",
     "@types/dns-packet": "^5.2.4",
     "@types/jest": "^28.1.3",

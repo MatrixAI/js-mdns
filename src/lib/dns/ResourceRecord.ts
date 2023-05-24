@@ -98,7 +98,7 @@ export const decodeResourceRecords = (buffer: Uint8Array, offset: number = 0, rr
     const dataOffset = totalReadBytesOffset + readBytes + 10;
 
     if (stringRecordTypes.includes(type)) {
-      const sliecedStringDataBuffer = buffer.slice(dataOffset, dataOffset + rdlength);
+      const sliecedStringDataBuffer = buffer.subarray(dataOffset, dataOffset + rdlength);
 
 
       let data: string;

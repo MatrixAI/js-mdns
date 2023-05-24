@@ -8,6 +8,14 @@ export const readUInt32BE = (data: Uint8Array, offset: number = 0): number => {
   return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
 }
 
+export const encodeUInt16BE = (value: number): Uint8Array => {
+  return new Uint8Array([(value >> 8) & 0xFF, value & 0xFF]);
+}
+
+export const encodeUInt32BE = (value: number): Uint8Array => {
+  return new Uint8Array([(value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF]);
+}
+
 // remember, the whole packet needs to be fed into this function, as the pointer is relative to the start of the packet.
 export const decodeName = (data: Uint8Array, offset: number = 0): DecodedData<string> => {
   let currentIndex = offset;
@@ -66,4 +74,31 @@ export const encodeName = (name: string): Uint8Array => {
   encodedName.push(0); // Terminating null byte
 
   return new Uint8Array(encodedName);
+}
+
+export const decodeIPv6 = (buffer: Uint8Array, offset: number = 0): string => {
+  const parts: string[] = [];
+
+  for (let i = offset; i < offset + 16; i += 2) {
+    const value = readUInt16BE(buffer, i).toString(16);
+    parts.push(value);
+  }
+
+  return parts.join(':');
+}
+
+export const encodeIPv6 = (ip: string): Uint8Array => {
+  const parts = ip.split(':');
+
+  const buffer = new Uint8Array(16);
+
+  let offset = 0;
+  for (const part of parts) {
+    const hexPart = parseInt(part, 16);
+
+    buffer[offset++] = hexPart >> 8;
+    buffer[offset++] = hexPart & 0xFF;
+  }
+
+  return buffer;
 }

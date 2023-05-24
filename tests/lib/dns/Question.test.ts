@@ -1,7 +1,7 @@
 import Packet from "@/lib/dns/Packet";
 import { decodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
 import { decodeQuestions, QClass, QType, Question } from "@/lib/dns/Question";
-import { encodeName } from "@/lib/dns/utils";
+import { encodeName, encodeUInt16BE } from "@/lib/dns/utils";
 import { testProp, fc } from "@fast-check/jest";
 
 // For all integers in set of values in QType/QClass
@@ -16,14 +16,14 @@ const fc_question = fc.record({
 
 describe('Question', () => {
   testProp(
-    "Question Decode - Single String Name",
+    "Decode - Single String Name",
     [fc_question],
     (originalQuestion) => {
 
       const rawQuestion = new Uint8Array([
         ...encodeName(originalQuestion.name),
-        0x00, ...new Uint8Array([originalQuestion.type]),
-        0x00, ...new Uint8Array([originalQuestion.class])
+        ...encodeUInt16BE(originalQuestion.type),
+        ...encodeUInt16BE(originalQuestion.class)
       ]);
 
       const decodedQuestion = decodeQuestions(rawQuestion, 0, 1);
@@ -36,15 +36,15 @@ describe('Question', () => {
   );
 
   testProp(
-    "Question Decode - Multiple String Name",
+    "Decode - Multiple String Name",
     [fc.array(fc_question, { minLength: 2, maxLength: 10 })],
     (originalQuestions) => {
 
       const originalQuestionUint8Array = originalQuestions.flatMap(q => {
         return [
           ...encodeName(q.name),
-          0x00, ...new Uint8Array([q.type]),
-          0x00, ...new Uint8Array([q.class])
+          ...encodeUInt16BE(q.type),
+          ...encodeUInt16BE(q.class)
         ];
       })
 
@@ -62,13 +62,13 @@ describe('Question', () => {
   );
 
   testProp(
-    "Question Decode - Pointer Name",
+    "Decode - Pointer Name",
     [fc_question],
     (originalQuestion) => {
       // Universal Type and Class
       const typeAndClass = new Uint8Array([
-        0x00, ...new Uint8Array([originalQuestion.type]),
-        0x00, ...new Uint8Array([originalQuestion.class])
+        ...encodeUInt16BE(originalQuestion.type),
+        ...encodeUInt16BE(originalQuestion.class)
       ]);
 
       // Question with fake name to see if the pointer will select the correct record

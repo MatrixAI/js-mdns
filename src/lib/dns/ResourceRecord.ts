@@ -1,5 +1,5 @@
 import { DecodedData } from "./types";
-import { decodeName, readUInt16BE, readUInt32BE } from "./utils";
+import { decodeName, readUInt32BE, readUInt16BE, decodeIPv6 } from "./utils";
 
 const FLUSH_MASK = 0x8000; // 2 bytes, first bit set
 const NOT_FLUSH_MASK = 0x7FFF;
@@ -32,7 +32,7 @@ export type BaseRecord<T, D> = {
   data: D;
 }
 
-const stringRecordTypes = [RType.A, RType.AAAA, RType.CNAME, RType.PTR, RType.TXT] as const;
+const stringRecordTypes = [RType.A, RType.AAAA, RType.CNAME, RType.PTR] as const;
 
 export type StringRecordType = typeof stringRecordTypes[number];
 
@@ -100,9 +100,10 @@ export const decodeResourceRecords = (buffer: Uint8Array, offset: number = 0, rr
     if (stringRecordTypes.includes(type)) {
       const sliecedStringDataBuffer = buffer.slice(dataOffset, dataOffset + rdlength);
 
+
       let data: string;
       if (type === RType.A) data = sliecedStringDataBuffer.join(".");
-      if (type === RType.AAAA) data = decodeIPv6(sliecedStringDataBuffer);
+      else if (type === RType.AAAA) data = decodeIPv6(sliecedStringDataBuffer);
       else data = decodeName(sliecedStringDataBuffer, 0).data;
 
       const stringRecord: StringRecord = {
@@ -115,6 +116,12 @@ export const decodeResourceRecords = (buffer: Uint8Array, offset: number = 0, rr
       }
       records.push(stringRecord)
     }
+    else if (type === RType.TXT) {
+      // ???
+    }
+    else if (type === RType.SRV) {
+      // ???
+    }
 
     totalReadBytes += readBytes + 10 + rdlength;
   }
@@ -123,19 +130,4 @@ export const decodeResourceRecords = (buffer: Uint8Array, offset: number = 0, rr
     data: records,
     readBytes: totalReadBytes,
   }
-}
-
-const decodeIPv6 = (buffer: Uint8Array): string => {
-  if (buffer.length !== 16) {
-    throw new Error('Invalid IPv6 address length');
-  }
-
-  const parts: string[] = [];
-
-  for (let i = 0; i < buffer.length; i += 2) {
-    const hexPart = (buffer[i] << 8) + buffer[i + 1];
-    parts.push(hexPart.toString(16));
-  }
-
-  return parts.join(':');
 }

@@ -19,7 +19,7 @@ export enum RClass { // RFC 1035 3.2.4.
   // incomplete list
 }
 
-export interface ResourceRecord {
+export type ResourceRecord = {
   name: string;
   type: RType;
   flush: boolean;

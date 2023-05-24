@@ -1,4 +1,4 @@
-import Packet from "@/lib/dns/Packet";
+import { decodePacket } from "@/lib/dns/Packet";
 import { decodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
 
 describe('Packet', () => {
@@ -26,7 +26,7 @@ describe('Packet', () => {
       0xC0, 0xA8, 0x00, 0x01, // IPv4 address: 192.168.0.1
     ]);
 
-    const decodedPacket = Packet.decode(rawPacket);
+    const decodedPacket = decodePacket(rawPacket);
 
     expect(decodedPacket).toBe({
       id: 0,

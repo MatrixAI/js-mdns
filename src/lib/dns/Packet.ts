@@ -2,47 +2,25 @@ import { Question } from "dns-packet";
 import { decodePacketFlags, PacketFlags } from "./PacketFlags";
 import { readUInt16BE } from "./utils";
 
-
-export interface PacketOptions {
-  id?: number;
-
+export type Packet = {
+  id: number;
   flags: PacketFlags;
-
-  questions?: Question[];
-  // answers?: ResourceRecord[];
-  // authorities?: ResourceRecord[];
-  // additionals?: ResourceRecord[];
+  questions: Question[];
 }
 
-class Packet {
-  id;
-  flags: PacketFlags;
+export const decodePacket = (buffer: Uint8Array): Packet => {
+  const id = readUInt16BE(buffer, 0);
+  const flags = readUInt16BE(buffer, 2);
+  const qdcount = readUInt16BE(buffer, 4);
+  const ancount = readUInt16BE(buffer, 6);
+  const nscount = readUInt16BE(buffer, 8);
+  const arcount = readUInt16BE(buffer, 10);
 
-  questions?: Question[];
-  // answers?: undefined;
-  // additionals?: undefined;
-  // authorities?: undefined;
-
-  constructor(options: PacketOptions) {
-    this.id = options.id || 0;
-    this.flags = options.flags;
-    this.questions = options.questions;
-  }
-
-  public static decode(buffer: Uint8Array) {
-    const id = readUInt16BE(buffer, 0);
-    const flags = readUInt16BE(buffer, 2);
-    const qdcount = readUInt16BE(buffer, 4);
-    const ancount = readUInt16BE(buffer, 6);
-    const nscount = readUInt16BE(buffer, 8);
-    const arcount = readUInt16BE(buffer, 10);
-
-    console.log(id)
-    return new Packet({
-      id,
-      flags: decodePacketFlags(flags)
-    });
-  }
+  return {
+    id,
+    flags: decodePacketFlags(flags),
+    questions: []
+  };
 }
 
 export default Packet;

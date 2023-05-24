@@ -1,7 +1,7 @@
 import { DecodedData } from "./types";
 import { decodeName, readUInt16BE, readUInt16LE } from "./utils";
 
-export interface Question {
+export type Question = {
   name: string;
   type: QType;
   class: QClass;

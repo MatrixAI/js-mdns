@@ -23,7 +23,7 @@ export const decodePacketFlags = (flags: number): PacketFlags => {
   };
 }
 
-export interface PacketFlags {
+export type PacketFlags = {
   // Always Present
   type: PacketType;
   opcode: OpCode;

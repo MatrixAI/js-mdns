@@ -1,5 +1,6 @@
-import { decodePacket } from "@/lib/dns/Packet";
+import Packet, { decodePacket } from "@/lib/dns/Packet";
 import { decodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
+import { QClass, QType } from "@/lib/dns/Question";
 
 describe('Packet', () => {
   test('Packet Decode', () => {
@@ -28,7 +29,7 @@ describe('Packet', () => {
 
     const decodedPacket = decodePacket(rawPacket);
 
-    expect(decodedPacket).toBe({
+    expect(decodedPacket).toEqual({
       id: 0,
       flags: {
         type: PacketType.RESPONSE,
@@ -41,7 +42,12 @@ describe('Packet', () => {
         zero: false,
         authenticData: false,
         checkingDisabled: false
-      }
-    })
+      },
+      questions: [{
+        name: "_http._tcp.local",
+        type: QType.A,
+        class: QClass.IN
+      }]
+    } as Packet)
   });
 });

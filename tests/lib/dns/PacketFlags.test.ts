@@ -1,4 +1,3 @@
-import Packet from "@/lib/dns/Packet";
 import { decodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
 
 describe('PacketFlags', () => {

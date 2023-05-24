@@ -1,5 +1,5 @@
 import { DecodedData } from "./types";
-import { decodeName, encodeName, readUInt16BE, readUInt16LE } from "./utils";
+import { decodeName, encodeName, readUInt16BE } from "./utils";
 
 export type Question = {
   name: string;
@@ -7,10 +7,10 @@ export type Question = {
   class: QClass;
 }
 
-export const decodeQuestions = (buffer: Uint8Array, offset: number = 0, questionCount: number): DecodedData<Question[]> => {
+export const decodeQuestions = (buffer: Uint8Array, offset: number = 0, qdcount: number = 1): DecodedData<Question[]> => {
   let totalReadBytes = 0;
   const questions: Question[] = [];
-  while (totalReadBytes < buffer.byteLength && questions.length < questionCount) {
+  while (totalReadBytes < buffer.byteLength && questions.length < qdcount) {
     const totalReadBytesOffset = offset + totalReadBytes;
 
     const { data: name, readBytes } = decodeName(buffer, totalReadBytesOffset);

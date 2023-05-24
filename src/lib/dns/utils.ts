@@ -1,11 +1,11 @@
 import { DecodedData } from "./types";
 
-export const readUInt16LE = (data: Uint8Array, offset: number = 0): number => {
-  return (data[offset] | (data[offset + 1] << 8));
-};
-
 export const readUInt16BE = (data: Uint8Array, offset: number = 0): number => {
   return (data[offset] << 8) | data[offset + 1];
+}
+
+export const readUInt32BE = (data: Uint8Array, offset: number = 0): number => {
+  return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
 }
 
 // remember, the whole packet needs to be fed into this function, as the pointer is relative to the start of the packet.

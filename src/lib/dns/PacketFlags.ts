@@ -23,6 +23,23 @@ export const decodePacketFlags = (flags: number): PacketFlags => {
   };
 }
 
+export const encodePacketFlags = (flags: PacketFlags): number => {
+  let encodedFlags = 0;
+  encodedFlags |= flags.type << 15;
+  encodedFlags |= flags.opcode << 11;
+  encodedFlags |= flags.rcode;
+
+  if (flags.authoritativeAnswer) encodedFlags |= AUTHORITATIVE_ANSWER_MASK;
+  if (flags.truncation) encodedFlags |= TRUNCATION_MASK;
+  if (flags.recursionDesired) encodedFlags |= RECURSION_DESIRED_MASK;
+  if (flags.recursionAvailable) encodedFlags |= RECURSION_AVAILABLE_MASK;
+  if (flags.zero) encodedFlags |= ZERO_HEADER_MASK;
+  if (flags.authenticData) encodedFlags |= AUTHENTIC_DATA_MASK;
+  if (flags.checkingDisabled) encodedFlags |= CHECKING_DISABLED_MASK;
+
+  return encodedFlags;
+}
+
 export type PacketFlags = {
   // Always Present
   type: PacketType;

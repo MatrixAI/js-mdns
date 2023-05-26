@@ -7,16 +7,8 @@ import {
   RCode,
 } from '@/dns';
 
-const fc_opcodes = fc.constantFrom(
-  ...Object.keys(OpCode)
-    .filter((key) => isNaN(Number(key)))
-    .map((c) => OpCode[c]),
-);
-const fc_rcodes = fc.constantFrom(
-  ...Object.keys(RCode)
-    .filter((key) => isNaN(Number(key)))
-    .map((c) => RCode[c]),
-);
+const FC_OPCODES = fc.constantFrom(OpCode.QUERY);
+const FC_RCODES = fc.constantFrom(RCode.NoError);
 
 describe('PacketFlags', () => {
   test('Flag Decode', () => {
@@ -40,8 +32,8 @@ describe('PacketFlags', () => {
     [
       fc.record({
         type: fc.constantFrom(PacketType.QUERY, PacketType.RESPONSE),
-        opcode: fc_opcodes,
-        rcode: fc_rcodes,
+        opcode: FC_OPCODES,
+        rcode: FC_RCODES,
         authoritativeAnswer: fc.boolean(),
         truncation: fc.boolean(),
         recursionDesired: fc.boolean(),

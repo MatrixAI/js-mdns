@@ -1,8 +1,22 @@
-import { toPacketFlags, fromPacketFlags, OpCode, PacketType, RCode } from "@/dns";
-import { fc, testProp } from "@fast-check/jest";
+import { fc, testProp } from '@fast-check/jest';
+import {
+  toPacketFlags,
+  fromPacketFlags,
+  OpCode,
+  PacketType,
+  RCode,
+} from '@/dns';
 
-const fc_opcodes = fc.constantFrom(...Object.keys(OpCode).filter(key => isNaN(Number(key))).map(c => OpCode[c]));
-const fc_rcodes = fc.constantFrom(...Object.keys(RCode).filter(key => isNaN(Number(key))).map(c => RCode[c]));
+const fc_opcodes = fc.constantFrom(
+  ...Object.keys(OpCode)
+    .filter((key) => isNaN(Number(key)))
+    .map((c) => OpCode[c]),
+);
+const fc_rcodes = fc.constantFrom(
+  ...Object.keys(RCode)
+    .filter((key) => isNaN(Number(key)))
+    .map((c) => RCode[c]),
+);
 
 describe('PacketFlags', () => {
   test('Flag Decode', () => {
@@ -18,28 +32,30 @@ describe('PacketFlags', () => {
       recursionAvailable: false,
       zero: false,
       authenticData: false,
-      checkingDisabled: false
+      checkingDisabled: false,
     });
   });
   testProp(
-    "Full",
-    [fc.record({
-      type: fc.constantFrom(PacketType.QUERY, PacketType.RESPONSE),
-      opcode: fc_opcodes,
-      rcode: fc_rcodes,
-      authoritativeAnswer: fc.boolean(),
-      truncation: fc.boolean(),
-      recursionDesired: fc.boolean(),
-      recursionAvailable: fc.boolean(),
-      zero: fc.boolean(),
-      authenticData: fc.boolean(),
-      checkingDisabled: fc.boolean()
-    })],
+    'Full',
+    [
+      fc.record({
+        type: fc.constantFrom(PacketType.QUERY, PacketType.RESPONSE),
+        opcode: fc_opcodes,
+        rcode: fc_rcodes,
+        authoritativeAnswer: fc.boolean(),
+        truncation: fc.boolean(),
+        recursionDesired: fc.boolean(),
+        recursionAvailable: fc.boolean(),
+        zero: fc.boolean(),
+        authenticData: fc.boolean(),
+        checkingDisabled: fc.boolean(),
+      }),
+    ],
     (originalFlags) => {
       const encodedFlags = fromPacketFlags(originalFlags);
       const decodedFlags = toPacketFlags(encodedFlags);
 
       expect(decodedFlags).toEqual(originalFlags);
-    }
-  )
+    },
+  );
 });

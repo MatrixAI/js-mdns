@@ -7,7 +7,7 @@ type Packet = {
   id: number;
   flags: PacketFlags;
   questions: Question[];
-}
+};
 
 type PacketFlags = {
   // Always Present
@@ -18,13 +18,13 @@ type PacketFlags = {
   authoritativeAnswer?: boolean;
   truncation?: boolean;
 
-  // below flags are all not used with mdns
+  // Below flags are all not used with mdns
   recursionDesired?: boolean;
   recursionAvailable?: boolean;
   zero?: boolean;
   authenticData?: boolean;
   checkingDisabled?: boolean;
-}
+};
 
 enum PacketType {
   QUERY = 0,
@@ -33,25 +33,24 @@ enum PacketType {
 
 enum OpCode { // RFC 6895 2.2.
   QUERY = 0,
-  // incomplete list
+  // Incomplete list
 }
 
 enum RCode { // RFC 6895 2.3.
   NoError = 0,
-  // incomplete list
+  // Incomplete list
 }
-
 
 type Question = {
   name: string;
   type: QType;
   class: QClass;
-}
+};
 
 enum QClass { // RFC 1035 3.2.4. 3.2.5.
-  IN = 1, // the internet
+  IN = 1, // The internet
   ANY = 255,
-  // incomplete list
+  // Incomplete list
 }
 
 enum QType { // RFC 1035 3.2.2. 3.2.3.
@@ -64,10 +63,15 @@ enum QType { // RFC 1035 3.2.2. 3.2.3.
   OPT = 41, // RFC 6891
   NSEC = 47, // RFC 4034 4.
   ANY = 255,
-  // incomplete list
+  // Incomplete list
 }
 
-type ResourceRecord = StringRecord | TXTRecord | SRVRecord | OptRecord | NSECRecord;
+type ResourceRecord =
+  | StringRecord
+  | TXTRecord
+  | SRVRecord
+  | OptRecord
+  | NSECRecord;
 
 enum RType { // RFC 1035 3.2.2.
   A = 1,
@@ -82,7 +86,7 @@ enum RType { // RFC 1035 3.2.2.
 }
 
 enum RClass { // RFC 1035 3.2.4.
-  IN = 1, // the internet
+  IN = 1, // The internet
   // incomplete list
 }
 
@@ -95,61 +99,60 @@ type BaseRecord<T, D> = {
   ttl: number;
 
   data: D;
-}
+};
 
-type StringRecord = BaseRecord<RType.A | RType.AAAA | RType.CNAME | RType.PTR, string>;
+type StringRecord = BaseRecord<
+  RType.A | RType.AAAA | RType.CNAME | RType.PTR,
+  string
+>;
 
-type TXTRecord = BaseRecord<RType.TXT, Map<string, string>>
+type TXTRecord = BaseRecord<RType.TXT, Map<string, string>>;
 
-type SRVRecord = BaseRecord<RType.SRV, {
-  port: number;
-  target: string;
-  priority: number;
-  weight: number;
-}>
+type SRVRecord = BaseRecord<
+  RType.SRV,
+  {
+    port: number;
+    target: string;
+    priority: number;
+    weight: number;
+  }
+>;
 
 // This will have to be fleshed out later
 type OptRecord = {
   type: RType.OPT;
-  name: "0";
+  name: '0';
 
   udpPayloadSize: number; // RFC 6891 6.1.2. Class is used to denote "requestor's UDP payload size"
   extendedRCode: number; // RFC 6891 6.1.3. TTL is used to denote "extended RCODE and flags". First 8 bits are the extended RCODE.
   ednsVersion: number; // RFC 6891 6.1.3. Proceeding 8 bits are the Version.
   flags: number; // RFC 6891 6.1.4. Proceeding bit is the DO bit. For DNSSEC OK [RFC3225]. This is unneeded for mDNS. The proceeding 15 bits are set to zero and ignored.
   data: any[]; // RFC 6891 6.1.2. This makes up the RDATA field. Each option consists of an option-code, length of option-data in octets, and option-data.
-}
+};
 
-type NSECRecord = BaseRecord<RType.NSEC, {
-  nextDomainName: string;
-  rrTypeWindows: {
-    windowId: number;
-    bitmapSize: number;
-    RRTypes: RType[];
-  }[]
-}>
+type NSECRecord = BaseRecord<
+  RType.NSEC,
+  {
+    nextDomainName: string;
+    rrTypeWindows: {
+      windowId: number;
+      bitmapSize: number;
+      RRTypes: RType[];
+    }[];
+  }
+>;
 
-export {
+export type {
   DecodedData,
-
   Packet,
-
   PacketFlags,
-  PacketType,
-  OpCode,
-  RCode,
-
   Question,
-  QClass,
-  QType,
-
   ResourceRecord,
-  RType,
-  RClass,
   BaseRecord,
   StringRecord,
   TXTRecord,
   SRVRecord,
   OptRecord,
   NSECRecord,
-}
+};
+export { PacketType, OpCode, RCode, QClass, QType, RType, RClass };

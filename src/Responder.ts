@@ -16,7 +16,6 @@ const MDNS_TTL = 255;
 const HOSTNAME_RR_TTL = 120;
 const OTHER_RR_TTL = 4500;
 
-
 interface Responder extends StartStop {}
 @StartStop()
 class Responder extends EventTarget {
@@ -24,7 +23,7 @@ class Responder extends EventTarget {
   protected ifaces: Map<string, NetworkInterfaceInfo[]>;
   protected ifaceSockets: Map<string, Socket>;
   protected ifaceResourceRecords: Map<string, dnsPacket.Answer[]>;
-  protected ifaceServices: Map<string,  dnsPacket.Answer[][]>
+  protected ifaceServices: Map<string, dnsPacket.Answer[][]>;
 
   constructor() {
     super();
@@ -89,7 +88,7 @@ class Responder extends EventTarget {
     packet: dnsPacket.Packet,
     rinfo: RemoteInfo,
   ): Promise<void> {
-    console.log(packet, rinfo)
+    console.log(packet, rinfo);
     const answers: Map<string, dnsPacket.Answer[]> = new Map();
 
     for (const [ifaceName, hostAnswers] of this.ifaceResourceRecords) {
@@ -115,7 +114,7 @@ class Responder extends EventTarget {
       answers: [...answers.values()].flat(),
     };
 
-    console.log(response, "response");
+    console.log(response, 'response');
 
     await this.sendPacket(response, [...answers.keys()]);
   }
@@ -219,15 +218,14 @@ class Responder extends EventTarget {
 
     // Implement probing before this point.
 
-    const localTLD = ".local";
+    const localTLD = '.local';
 
     const fullServiceType = serviceType + localTLD;
 
     let hostnameDomain = hostname;
     if (hostname.endsWith(localTLD)) {
       hostnameDomain = hostname.slice(0, -localTLD.length);
-    }
-    else {
+    } else {
       hostname += localTLD;
     }
 
@@ -235,7 +233,7 @@ class Responder extends EventTarget {
 
     const answers: dnsPacket.Answer[] = [
       {
-        name: "_services._dns-sd._udp.local",
+        name: '_services._dns-sd._udp.local',
         type: 'PTR',
         class: 'IN',
         ttl,
@@ -277,13 +275,13 @@ class Responder extends EventTarget {
     ]);
 
     const advertPacket: dnsPacket.Packet = {
-      id: 0xCAFEBABE,
+      id: 0xcafebabe,
       type: 'response',
       flags: 1024,
-      answers: [
-        ...host_answers,
-        ...answers
-      ].map((e) => { (e as any).flush = true; return e }),
+      answers: [...host_answers, ...answers].map((e) => {
+        (e as any).flush = true;
+        return e;
+      }),
     };
 
     console.log(JSON.stringify(advertPacket, null, 4));

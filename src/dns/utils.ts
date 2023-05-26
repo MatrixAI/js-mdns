@@ -1,4 +1,14 @@
-import { DecodedData, OpCode, Packet, PacketFlags, Question, RCode, ResourceRecord, RType, StringRecord } from "./types";
+import type {
+  DecodedData,
+  OpCode,
+  Packet,
+  PacketFlags,
+  Question,
+  RCode,
+  ResourceRecord,
+  StringRecord,
+} from './types';
+import { RType } from './types';
 
 // Packet Flag Masks
 const AUTHORITATIVE_ANSWER_MASK = 0x400;
@@ -11,27 +21,42 @@ const CHECKING_DISABLED_MASK = 0x10;
 
 // RR masks
 const FLUSH_MASK = 0x8000; // 2 bytes, first bit set
-const NOT_FLUSH_MASK = 0x7FFF;
+const NOT_FLUSH_MASK = 0x7fff;
 
-const STRING_RECORD_RTYPES = [RType.A, RType.AAAA, RType.CNAME, RType.PTR] as const;
+const STRING_RECORD_RTYPES = [
+  RType.A,
+  RType.AAAA,
+  RType.CNAME,
+  RType.PTR,
+] as const;
 
 function readUInt16BE(data: Uint8Array, offset: number = 0): number {
   return (data[offset] << 8) | data[offset + 1];
 }
 
 function encodeUInt16BE(value: number): Uint8Array {
-  return new Uint8Array([(value >> 8) & 0xFF, value & 0xFF]);
+  return new Uint8Array([(value >> 8) & 0xff, value & 0xff]);
 }
 
 function readUInt32BE(data: Uint8Array, offset: number = 0): number {
-  return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+  return (
+    (data[offset] << 24) |
+    (data[offset + 1] << 16) |
+    (data[offset + 2] << 8) |
+    data[offset + 3]
+  );
 }
 
 function encodeUInt32BE(value: number): Uint8Array {
-  return new Uint8Array([(value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF]);
+  return new Uint8Array([
+    (value >> 24) & 0xff,
+    (value >> 16) & 0xff,
+    (value >> 8) & 0xff,
+    value & 0xff,
+  ]);
 }
 
-// remember, the whole packet needs to be fed into this function, as the pointer is relative to the start of the packet.
+// Remember, the whole packet needs to be fed into this function, as the pointer is relative to the start of the packet.
 function toName(data: Uint8Array, offset: number = 0): DecodedData<string> {
   let currentIndex = offset;
   let name = '';
@@ -39,14 +64,16 @@ function toName(data: Uint8Array, offset: number = 0): DecodedData<string> {
   let foundPointer = false;
 
   while (data[currentIndex] !== 0) {
-    if ((data[currentIndex] & 0xC0) === 0xC0) {
-      const pointerOffset = readUInt16BE(data, currentIndex) & 0x3FFF;
+    if ((data[currentIndex] & 0xc0) === 0xc0) {
+      const pointerOffset = readUInt16BE(data, currentIndex) & 0x3fff;
       currentIndex = pointerOffset;
       readBytes += 2; // Compression pointer occupies 2 bytes
       foundPointer = true;
     } else {
       const labelLength = data[currentIndex];
-      const label = new TextDecoder().decode(data.subarray(currentIndex + 1, currentIndex + 1 + labelLength));
+      const label = new TextDecoder().decode(
+        data.subarray(currentIndex + 1, currentIndex + 1 + labelLength),
+      );
       name += label + '.';
       currentIndex += labelLength + 1;
       if (!foundPointer) readBytes += labelLength + 1; // Label length + label characters occupy labelLength + 1 bytes
@@ -56,7 +83,7 @@ function toName(data: Uint8Array, offset: number = 0): DecodedData<string> {
   if (!foundPointer) readBytes += 1; // Include the terminating null byte
 
   return { data: name.slice(0, -1), readBytes };
-};
+}
 
 function fromName(name: string): Uint8Array {
   const labels = name.split('.');
@@ -64,7 +91,9 @@ function fromName(name: string): Uint8Array {
 
   for (const label of labels) {
     if (label.length > 63) {
-      throw new Error(`Label "${label}" exceeds the maximum length of 63 characters.`);
+      throw new Error(
+        `Label "${label}" exceeds the maximum length of 63 characters.`,
+      );
     }
 
     encodedName.push(label.length);
@@ -77,7 +106,9 @@ function fromName(name: string): Uint8Array {
 
       if (codePoint > 127) {
         // Code point requires UTF-8 encoding
-        const encodedBytes = Array.from(new TextEncoder().encode(label.charAt(i)));
+        const encodedBytes = Array.from(
+          new TextEncoder().encode(label.charAt(i)),
+        );
         encodedName.push(...encodedBytes);
       } else {
         // ASCII character, no encoding needed
@@ -112,7 +143,7 @@ function fromIPv6(ip: string): Uint8Array {
     const hexPart = parseInt(part, 16);
 
     buffer[offset++] = hexPart >> 8;
-    buffer[offset++] = hexPart & 0xFF;
+    buffer[offset++] = hexPart & 0xff;
   }
 
   return buffer;
@@ -135,7 +166,7 @@ function toPacket(buffer: Uint8Array): Packet {
 
 function toPacketFlags(flags: number): PacketFlags {
   return {
-    type: (flags >> 15),
+    type: flags >> 15,
     opcode: ((flags >> 11) & 0xf) as OpCode,
     rcode: (flags & 0xf) as RCode,
 
@@ -167,7 +198,11 @@ function fromPacketFlags(flags: PacketFlags): number {
   return encodedFlags;
 }
 
-function toQuestions(buffer: Uint8Array, offset: number = 0, qdcount: number = 1): DecodedData<Question[]> {
+function toQuestions(
+  buffer: Uint8Array,
+  offset: number = 0,
+  qdcount: number = 1,
+): DecodedData<Question[]> {
   let totalReadBytes = 0;
   const questions: Question[] = [];
   while (totalReadBytes < buffer.byteLength && questions.length < qdcount) {
@@ -185,7 +220,7 @@ function toQuestions(buffer: Uint8Array, offset: number = 0, qdcount: number = 1
   return {
     data: questions,
     readBytes: totalReadBytes,
-  }
+  };
 }
 
 function fromQuestions(questions: Question[]): Uint8Array {
@@ -194,14 +229,17 @@ function fromQuestions(questions: Question[]): Uint8Array {
     const encodedName = fromName(question.name);
     // Implement Name Compression Later
     encodedQuestions.push(...encodedName);
-    encodedQuestions.push((question.type >> 8) & 0xFF, question.type & 0xFF);
-    encodedQuestions.push((question.class >> 8) & 0xFF, question.class & 0xFF);
+    encodedQuestions.push((question.type >> 8) & 0xff, question.type & 0xff);
+    encodedQuestions.push((question.class >> 8) & 0xff, question.class & 0xff);
   }
   return new Uint8Array(encodedQuestions);
 }
 
-
-function toResourceRecords(buffer: Uint8Array, offset: number = 0, rrcount: number = 1): DecodedData<ResourceRecord[]> {
+function toResourceRecords(
+  buffer: Uint8Array,
+  offset: number = 0,
+  rrcount: number = 1,
+): DecodedData<ResourceRecord[]> {
   let totalReadBytes = 0;
   const records: ResourceRecord[] = [];
   while (totalReadBytes < buffer.byteLength && records.length < rrcount) {
@@ -217,21 +255,22 @@ function toResourceRecords(buffer: Uint8Array, offset: number = 0, rrcount: numb
     // Flush bit cannot exist on OPT records
     if (type !== RType.OPT) {
       flush = Boolean(rclass & FLUSH_MASK);
-      rclass = (rclass & NOT_FLUSH_MASK);
+      rclass = rclass & NOT_FLUSH_MASK;
     }
 
     const ttl = readUInt32BE(buffer, totalReadBytesOffset + readBytes + 4);
     const rdlength = readUInt16BE(buffer, totalReadBytesOffset + readBytes + 8);
 
-
     const dataOffset = totalReadBytesOffset + readBytes + 10;
 
     if (STRING_RECORD_RTYPES.includes(type)) {
-      const sliecedStringDataBuffer = buffer.subarray(dataOffset, dataOffset + rdlength);
-
+      const sliecedStringDataBuffer = buffer.subarray(
+        dataOffset,
+        dataOffset + rdlength,
+      );
 
       let data: string;
-      if (type === RType.A) data = sliecedStringDataBuffer.join(".");
+      if (type === RType.A) data = sliecedStringDataBuffer.join('.');
       else if (type === RType.AAAA) data = toIPv6(sliecedStringDataBuffer);
       else data = toName(sliecedStringDataBuffer, 0).data;
 
@@ -241,14 +280,12 @@ function toResourceRecords(buffer: Uint8Array, offset: number = 0, rrcount: numb
         class: rclass,
         flush,
         ttl,
-        data
-      }
-      records.push(stringRecord)
-    }
-    else if (type === RType.TXT) {
+        data,
+      };
+      records.push(stringRecord);
+    } else if (type === RType.TXT) {
       // ???
-    }
-    else if (type === RType.SRV) {
+    } else if (type === RType.SRV) {
       // ???
     }
 
@@ -258,7 +295,7 @@ function toResourceRecords(buffer: Uint8Array, offset: number = 0, rrcount: numb
   return {
     data: records,
     readBytes: totalReadBytes,
-  }
+  };
 }
 
 export {
@@ -266,20 +303,14 @@ export {
   encodeUInt16BE,
   readUInt32BE,
   encodeUInt32BE,
-
   toName,
   fromName,
-
   toIPv6,
   fromIPv6,
-
   toPacket,
-
   toPacketFlags,
   fromPacketFlags,
-
   toQuestions,
   fromQuestions,
-
-  toResourceRecords
-}
+  toResourceRecords,
+};

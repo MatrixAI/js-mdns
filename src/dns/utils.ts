@@ -1,14 +1,15 @@
-import type {
+import {
   DecodedData,
   OpCode,
   Packet,
   PacketFlags,
   Question,
+  RType,
+  RClass,
   RCode,
   ResourceRecord,
   StringRecord,
 } from './types';
-import { RType } from './types';
 
 // Packet Flag Masks
 const AUTHORITATIVE_ANSWER_MASK = 0x400;
@@ -23,12 +24,16 @@ const CHECKING_DISABLED_MASK = 0x10;
 const FLUSH_MASK = 0x8000; // 2 bytes, first bit set
 const NOT_FLUSH_MASK = 0x7fff;
 
-const STRING_RECORD_RTYPES = [
-  RType.A,
-  RType.AAAA,
-  RType.CNAME,
-  RType.PTR,
-] as const;
+function concatUInt8Array(...arrays: Uint8Array[]) {
+  let totalLength = arrays.reduce((acc, val) => acc + val.byteLength, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.byteLength;
+  }
+  return result;
+}
 
 function readUInt16BE(data: Uint8Array, offset: number = 0): number {
   return (data[offset] << 8) | data[offset + 1];
@@ -249,8 +254,8 @@ function toResourceRecords(
 
     let flush = false;
 
-    const type = readUInt16BE(buffer, totalReadBytesOffset + readBytes);
-    let rclass = readUInt16BE(buffer, totalReadBytesOffset + readBytes + 2);
+    const type: RType = readUInt16BE(buffer, totalReadBytesOffset + readBytes);
+    let rclass: RClass = readUInt16BE(buffer, totalReadBytesOffset + readBytes + 2);
 
     // Flush bit cannot exist on OPT records
     if (type !== RType.OPT) {
@@ -263,7 +268,7 @@ function toResourceRecords(
 
     const dataOffset = totalReadBytesOffset + readBytes + 10;
 
-    if (STRING_RECORD_RTYPES.includes(type)) {
+    if (isStringRType(type)) {
       const sliecedStringDataBuffer = buffer.subarray(
         dataOffset,
         dataOffset + rdlength,
@@ -298,7 +303,44 @@ function toResourceRecords(
   };
 }
 
+function fromResourceRecords(records: ResourceRecord[]): Uint8Array {
+  const buffer = new Uint8Array();
+  for (const record of records) {
+    // Implement Name Compression Later
+    const encodedName = fromName(record.name);
+
+    if (isStringRecord(record)) {
+      let data: Uint8Array;
+      if (record.type === RType.A) {
+        data = new Uint8Array(record.data.split('.').map((v) => Number(v)));
+      }
+      else if (record.type === RType.AAAA) {
+        data = fromIPv6(record.data);
+      }
+      else {
+        data = fromName(record.data);
+      }
+    }
+
+  }
+  return buffer;
+}
+
+function isStringRecord(record: ResourceRecord): record is StringRecord {
+  return isStringRType(record.type);
+}
+
+function isStringRType(type: RType): type is StringRecord['type'] {
+  return [
+    RType.A,
+    RType.AAAA,
+    RType.CNAME,
+    RType.PTR,
+  ].includes(type);
+}
+
 export {
+  concatUInt8Array,
   readUInt16BE,
   encodeUInt16BE,
   readUInt32BE,

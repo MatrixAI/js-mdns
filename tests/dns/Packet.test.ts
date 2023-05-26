@@ -1,4 +1,4 @@
-import { decodePacket, OpCode, PacketType, RCode, QClass, QType, Packet } from "@/dns";
+import { toPacket, OpCode, PacketType, RCode, QClass, QType, Packet } from "@/dns";
 
 describe('Packet', () => {
   test('Packet Decode', () => {
@@ -25,7 +25,7 @@ describe('Packet', () => {
       0xC0, 0xA8, 0x00, 0x01, // IPv4 address: 192.168.0.1
     ]);
 
-    const decodedPacket = decodePacket(rawPacket);
+    const decodedPacket = toPacket(rawPacket);
 
     expect(decodedPacket).toEqual({
       id: 0,

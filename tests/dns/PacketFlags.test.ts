@@ -1,4 +1,4 @@
-import { decodePacketFlags, encodePacketFlags, OpCode, PacketType, RCode } from "@/dns";
+import { toPacketFlags, fromPacketFlags, OpCode, PacketType, RCode } from "@/dns";
 import { fc, testProp } from "@fast-check/jest";
 
 const fc_opcodes = fc.constantFrom(...Object.keys(OpCode).filter(key => isNaN(Number(key))).map(c => OpCode[c]));
@@ -7,7 +7,7 @@ const fc_rcodes = fc.constantFrom(...Object.keys(RCode).filter(key => isNaN(Numb
 describe('PacketFlags', () => {
   test('Flag Decode', () => {
     const flags = 0b0000001000000000;
-    const decodedFlags = decodePacketFlags(flags);
+    const decodedFlags = toPacketFlags(flags);
     expect(decodedFlags).toEqual({
       type: PacketType.QUERY,
       opcode: OpCode.QUERY,
@@ -36,8 +36,8 @@ describe('PacketFlags', () => {
       checkingDisabled: fc.boolean()
     })],
     (originalFlags) => {
-      const encodedFlags = encodePacketFlags(originalFlags);
-      const decodedFlags = decodePacketFlags(encodedFlags);
+      const encodedFlags = fromPacketFlags(originalFlags);
+      const decodedFlags = toPacketFlags(encodedFlags);
 
       expect(decodedFlags).toEqual(originalFlags);
     }

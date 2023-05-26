@@ -15,24 +15,24 @@ const NOT_FLUSH_MASK = 0x7FFF;
 
 const STRING_RECORD_RTYPES = [RType.A, RType.AAAA, RType.CNAME, RType.PTR] as const;
 
-const readUInt16BE = (data: Uint8Array, offset: number = 0): number => {
+function readUInt16BE(data: Uint8Array, offset: number = 0): number {
   return (data[offset] << 8) | data[offset + 1];
 }
 
-const encodeUInt16BE = (value: number): Uint8Array => {
+function encodeUInt16BE(value: number): Uint8Array {
   return new Uint8Array([(value >> 8) & 0xFF, value & 0xFF]);
 }
 
-const readUInt32BE = (data: Uint8Array, offset: number = 0): number => {
+function readUInt32BE(data: Uint8Array, offset: number = 0): number {
   return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
 }
 
-const encodeUInt32BE = (value: number): Uint8Array => {
+function encodeUInt32BE(value: number): Uint8Array {
   return new Uint8Array([(value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF]);
 }
 
 // remember, the whole packet needs to be fed into this function, as the pointer is relative to the start of the packet.
-const decodeName = (data: Uint8Array, offset: number = 0): DecodedData<string> => {
+function toName(data: Uint8Array, offset: number = 0): DecodedData<string> {
   let currentIndex = offset;
   let name = '';
   let readBytes = 0;
@@ -58,7 +58,7 @@ const decodeName = (data: Uint8Array, offset: number = 0): DecodedData<string> =
   return { data: name.slice(0, -1), readBytes };
 };
 
-const encodeName = (name: string): Uint8Array => {
+function fromName(name: string): Uint8Array {
   const labels = name.split('.');
   const encodedName: number[] = [];
 
@@ -91,7 +91,7 @@ const encodeName = (name: string): Uint8Array => {
   return new Uint8Array(encodedName);
 }
 
-const decodeIPv6 = (buffer: Uint8Array, offset: number = 0): string => {
+function toIPv6(buffer: Uint8Array, offset: number = 0): string {
   const parts: string[] = [];
 
   for (let i = offset; i < offset + 16; i += 2) {
@@ -102,7 +102,7 @@ const decodeIPv6 = (buffer: Uint8Array, offset: number = 0): string => {
   return parts.join(':');
 }
 
-const encodeIPv6 = (ip: string): Uint8Array => {
+function fromIPv6(ip: string): Uint8Array {
   const parts = ip.split(':');
 
   const buffer = new Uint8Array(16);
@@ -118,7 +118,7 @@ const encodeIPv6 = (ip: string): Uint8Array => {
   return buffer;
 }
 
-const decodePacket = (buffer: Uint8Array): Packet => {
+function toPacket(buffer: Uint8Array): Packet {
   const id = readUInt16BE(buffer, 0);
   const flags = readUInt16BE(buffer, 2);
   const qdcount = readUInt16BE(buffer, 4); // Question Count
@@ -128,12 +128,12 @@ const decodePacket = (buffer: Uint8Array): Packet => {
 
   return {
     id,
-    flags: decodePacketFlags(flags),
-    questions: decodeQuestions(buffer, 12, qdcount).data,
+    flags: toPacketFlags(flags),
+    questions: toQuestions(buffer, 12, qdcount).data,
   };
 }
 
-const decodePacketFlags = (flags: number): PacketFlags => {
+function toPacketFlags(flags: number): PacketFlags {
   return {
     type: (flags >> 15),
     opcode: ((flags >> 11) & 0xf) as OpCode,
@@ -150,7 +150,7 @@ const decodePacketFlags = (flags: number): PacketFlags => {
   };
 }
 
-const encodePacketFlags = (flags: PacketFlags): number => {
+function fromPacketFlags(flags: PacketFlags): number {
   let encodedFlags = 0;
   encodedFlags |= flags.type << 15;
   encodedFlags |= flags.opcode << 11;
@@ -167,13 +167,13 @@ const encodePacketFlags = (flags: PacketFlags): number => {
   return encodedFlags;
 }
 
-const decodeQuestions = (buffer: Uint8Array, offset: number = 0, qdcount: number = 1): DecodedData<Question[]> => {
+function toQuestions(buffer: Uint8Array, offset: number = 0, qdcount: number = 1): DecodedData<Question[]> {
   let totalReadBytes = 0;
   const questions: Question[] = [];
   while (totalReadBytes < buffer.byteLength && questions.length < qdcount) {
     const totalReadBytesOffset = offset + totalReadBytes;
 
-    const { data: name, readBytes } = decodeName(buffer, totalReadBytesOffset);
+    const { data: name, readBytes } = toName(buffer, totalReadBytesOffset);
     questions.push({
       name,
       type: readUInt16BE(buffer, totalReadBytesOffset + readBytes),
@@ -188,10 +188,10 @@ const decodeQuestions = (buffer: Uint8Array, offset: number = 0, qdcount: number
   }
 }
 
-const encodeQuestions = (questions: Question[]): Uint8Array => {
+function fromQuestions(questions: Question[]): Uint8Array {
   const encodedQuestions: number[] = [];
   for (const question of questions) {
-    const encodedName = encodeName(question.name);
+    const encodedName = fromName(question.name);
     // Implement Name Compression Later
     encodedQuestions.push(...encodedName);
     encodedQuestions.push((question.type >> 8) & 0xFF, question.type & 0xFF);
@@ -201,13 +201,13 @@ const encodeQuestions = (questions: Question[]): Uint8Array => {
 }
 
 
-const decodeResourceRecords = (buffer: Uint8Array, offset: number = 0, rrcount: number = 1): DecodedData<ResourceRecord[]> => {
+function toResourceRecords(buffer: Uint8Array, offset: number = 0, rrcount: number = 1): DecodedData<ResourceRecord[]> {
   let totalReadBytes = 0;
   const records: ResourceRecord[] = [];
   while (totalReadBytes < buffer.byteLength && records.length < rrcount) {
     const totalReadBytesOffset = offset + totalReadBytes;
 
-    const { data: name, readBytes } = decodeName(buffer, totalReadBytesOffset);
+    const { data: name, readBytes } = toName(buffer, totalReadBytesOffset);
 
     let flush = false;
 
@@ -232,8 +232,8 @@ const decodeResourceRecords = (buffer: Uint8Array, offset: number = 0, rrcount: 
 
       let data: string;
       if (type === RType.A) data = sliecedStringDataBuffer.join(".");
-      else if (type === RType.AAAA) data = decodeIPv6(sliecedStringDataBuffer);
-      else data = decodeName(sliecedStringDataBuffer, 0).data;
+      else if (type === RType.AAAA) data = toIPv6(sliecedStringDataBuffer);
+      else data = toName(sliecedStringDataBuffer, 0).data;
 
       const stringRecord: StringRecord = {
         name,
@@ -267,19 +267,19 @@ export {
   readUInt32BE,
   encodeUInt32BE,
 
-  decodeName,
-  encodeName,
+  toName,
+  fromName,
 
-  decodeIPv6,
-  encodeIPv6,
+  toIPv6,
+  fromIPv6,
 
-  decodePacket,
+  toPacket,
 
-  decodePacketFlags,
-  encodePacketFlags,
+  toPacketFlags,
+  fromPacketFlags,
 
-  decodeQuestions,
-  encodeQuestions,
+  toQuestions,
+  fromQuestions,
 
-  decodeResourceRecords
+  toResourceRecords
 }

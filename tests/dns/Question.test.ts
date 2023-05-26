@@ -1,4 +1,4 @@
-import { decodeQuestions, QClass, QType, encodeName, encodeUInt16BE } from "@/dns";
+import { toQuestions, QClass, QType, fromName, encodeUInt16BE } from "@/dns";
 import { testProp, fc } from "@fast-check/jest";
 
 // For all integers in set of values in QType/QClass
@@ -18,12 +18,12 @@ describe('Question', () => {
     (originalQuestion) => {
 
       const rawQuestion = new Uint8Array([
-        ...encodeName(originalQuestion.name),
+        ...fromName(originalQuestion.name),
         ...encodeUInt16BE(originalQuestion.type),
         ...encodeUInt16BE(originalQuestion.class)
       ]);
 
-      const decodedQuestion = decodeQuestions(rawQuestion, 0, 1);
+      const decodedQuestion = toQuestions(rawQuestion, 0, 1);
 
       expect(decodedQuestion).toEqual({
         data: [originalQuestion],
@@ -39,7 +39,7 @@ describe('Question', () => {
 
       const originalQuestionUint8Array = originalQuestions.flatMap(q => {
         return [
-          ...encodeName(q.name),
+          ...fromName(q.name),
           ...encodeUInt16BE(q.type),
           ...encodeUInt16BE(q.class)
         ];
@@ -49,7 +49,7 @@ describe('Question', () => {
         ...originalQuestionUint8Array
       ]);
 
-      const decodedQuestion = decodeQuestions(rawQuestion, 0, originalQuestions.length);
+      const decodedQuestion = toQuestions(rawQuestion, 0, originalQuestions.length);
 
       expect(decodedQuestion).toEqual({
         data: originalQuestions,
@@ -70,14 +70,14 @@ describe('Question', () => {
 
       // Question with fake name to see if the pointer will select the correct record
       const questionWithFakeName = new Uint8Array([
-        ...encodeName("fake.local"),
+        ...fromName("fake.local"),
         ...typeAndClass
       ]);
 
       // Uint8Array with a question and a pointer to that question
       const rawQuestion = new Uint8Array([
         ...questionWithFakeName,
-        ...encodeName(originalQuestion.name),
+        ...fromName(originalQuestion.name),
         ...typeAndClass,
 
         // Pointer Question Starts with 0xC0
@@ -85,7 +85,7 @@ describe('Question', () => {
         ...typeAndClass
       ]);
 
-      const decodedQuestion = decodeQuestions(rawQuestion, 0, 3);
+      const decodedQuestion = toQuestions(rawQuestion, 0, 3);
 
       expect(decodedQuestion.data[2].name).toEqual(originalQuestion.name);
       expect(decodedQuestion.readBytes).toEqual(rawQuestion.byteLength);

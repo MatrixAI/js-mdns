@@ -26,17 +26,17 @@ type PacketFlags = {
   checkingDisabled?: boolean;
 };
 
-enum PacketType {
+const enum PacketType {
   QUERY = 0,
   RESPONSE = 1, // 16th bit set
 }
 
-enum OpCode { // RFC 6895 2.2.
+const enum OpCode { // RFC 6895 2.2.
   QUERY = 0,
   // Incomplete list
 }
 
-enum RCode { // RFC 6895 2.3.
+const enum RCode { // RFC 6895 2.3.
   NoError = 0,
   // Incomplete list
 }
@@ -47,13 +47,13 @@ type Question = {
   class: QClass;
 };
 
-enum QClass { // RFC 1035 3.2.4. 3.2.5.
+const enum QClass { // RFC 1035 3.2.4. 3.2.5.
   IN = 1, // The internet
   ANY = 255,
   // Incomplete list
 }
 
-enum QType { // RFC 1035 3.2.2. 3.2.3.
+const enum QType { // RFC 1035 3.2.2. 3.2.3.
   A = 1,
   CNAME = 5,
   PTR = 12,
@@ -73,7 +73,7 @@ type ResourceRecord =
   | OptRecord
   | NSECRecord;
 
-enum RType { // RFC 1035 3.2.2.
+const enum RType { // RFC 1035 3.2.2.
   A = 1,
   CNAME = 5,
   PTR = 12,
@@ -85,7 +85,7 @@ enum RType { // RFC 1035 3.2.2.
   // incomplete list
 }
 
-enum RClass { // RFC 1035 3.2.4.
+const enum RClass { // RFC 1035 3.2.4.
   IN = 1, // The internet
   // incomplete list
 }

@@ -2,21 +2,13 @@ import { testProp, fc } from '@fast-check/jest';
 import { toQuestions, QClass, QType, fromName, encodeUInt16BE } from '@/dns';
 
 // For all integers in set of values in QType/QClass
-const fc_qtypes = fc.constantFrom(
-  ...Object.keys(QType)
-    .filter((key) => isNaN(Number(key)))
-    .map((c) => QType[c]),
-);
-const fc_qclasses = fc.constantFrom(
-  ...Object.keys(QClass)
-    .filter((key) => isNaN(Number(key)))
-    .map((c) => QClass[c]),
-);
+const FC_QTYPES = fc.constantFrom(QType.A, QType.AAAA, QType.ANY, QType.CNAME, QType.NSEC, QType.OPT, QType.PTR, QType.TXT, QType.SRV);
+const FC_QCLASSES = fc.constantFrom(QClass.ANY, QClass.IN);
 
 const fc_question = fc.record({
   name: fc.domain(),
-  type: fc_qtypes,
-  class: fc_qclasses,
+  type: FC_QTYPES,
+  class: FC_QCLASSES,
 });
 
 describe('Question', () => {

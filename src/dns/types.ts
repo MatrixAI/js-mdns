@@ -102,7 +102,7 @@ type BaseRecord<T, D> = {
 };
 
 type StringRecord = BaseRecord<
-  RType.A | RType.AAAA | RType.CNAME | RType.PTR,
+  (RType.A | RType.AAAA | RType.CNAME | RType.PTR),
   string
 >;
 

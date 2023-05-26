@@ -1,5 +1,5 @@
 import { testProp, fc } from '@fast-check/jest';
-import { toQuestions, QClass, QType, fromName, encodeUInt16BE } from '@/dns';
+import { toQuestions, QClass, QType, fromName, encodeUInt16BE, concatUInt8Array } from '@/dns';
 
 // For all integers in set of values in QType/QClass
 const FC_QTYPES = fc.constantFrom(QType.A, QType.AAAA, QType.ANY, QType.CNAME, QType.NSEC, QType.OPT, QType.PTR, QType.TXT, QType.SRV);
@@ -13,11 +13,15 @@ const fc_question = fc.record({
 
 describe('Question', () => {
   testProp('Decode - Single String Name', [fc_question], (originalQuestion) => {
-    const rawQuestion = new Uint8Array([
-      ...fromName(originalQuestion.name),
-      ...encodeUInt16BE(originalQuestion.type),
-      ...encodeUInt16BE(originalQuestion.class),
-    ]);
+    const buffer = fromName(originalQuestion.name);
+    const nameLength = buffer.byteLength;
+    const view = new DataView(buffer.buffer);
+
+    const rawQuestion = concatUInt8Array(
+      fromName(originalQuestion.name),
+      encodeUInt16BE(originalQuestion.type),
+      encodeUInt16BE(originalQuestion.class)
+    );
 
     const decodedQuestion = toQuestions(rawQuestion, 0, 1);
 
@@ -39,7 +43,7 @@ describe('Question', () => {
         ];
       });
 
-      const rawQuestion = new Uint8Array([...originalQuestionUint8Array]);
+      const rawQuestion = new Uint8Array(originalQuestionUint8Array);
 
       const decodedQuestion = toQuestions(
         rawQuestion,
@@ -56,28 +60,27 @@ describe('Question', () => {
 
   testProp('Decode - Pointer Name', [fc_question], (originalQuestion) => {
     // Universal Type and Class
-    const typeAndClass = new Uint8Array([
-      ...encodeUInt16BE(originalQuestion.type),
-      ...encodeUInt16BE(originalQuestion.class),
-    ]);
+    const typeAndClass = concatUInt8Array(
+      encodeUInt16BE(originalQuestion.type),
+      encodeUInt16BE(originalQuestion.class),
+    );
 
     // Question with fake name to see if the pointer will select the correct record
-    const questionWithFakeName = new Uint8Array([
-      ...fromName('fake.local'),
-      ...typeAndClass,
-    ]);
+    const questionWithFakeName = concatUInt8Array(
+      fromName('fake.local'),
+      typeAndClass,
+    );
 
     // Uint8Array with a question and a pointer to that question
-    const rawQuestion = new Uint8Array([
-      ...questionWithFakeName,
-      ...fromName(originalQuestion.name),
-      ...typeAndClass,
+    const rawQuestion = concatUInt8Array(
+      questionWithFakeName,
+      fromName(originalQuestion.name),
+      typeAndClass,
 
       // Pointer Question Starts with 0xC0
-      0xc0,
-      questionWithFakeName.byteLength,
-      ...typeAndClass,
-    ]);
+      new Uint8Array([0xc0, questionWithFakeName.byteLength]),
+      typeAndClass,
+    );
 
     const decodedQuestion = toQuestions(rawQuestion, 0, 3);
 

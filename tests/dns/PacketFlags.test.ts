@@ -1,4 +1,4 @@
-import { decodePacketFlags, encodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
+import { decodePacketFlags, encodePacketFlags, OpCode, PacketType, RCode } from "@/dns";
 import { fc, testProp } from "@fast-check/jest";
 
 const fc_opcodes = fc.constantFrom(...Object.keys(OpCode).filter(key => isNaN(Number(key))).map(c => OpCode[c]));

@@ -1,7 +1,4 @@
-import Packet from "@/lib/dns/Packet";
-import { decodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
-import { decodeQuestions, QClass, QType, Question } from "@/lib/dns/Question";
-import { encodeName, encodeUInt16BE } from "@/lib/dns/utils";
+import { decodeQuestions, QClass, QType, encodeName, encodeUInt16BE } from "@/dns";
 import { testProp, fc } from "@fast-check/jest";
 
 // For all integers in set of values in QType/QClass

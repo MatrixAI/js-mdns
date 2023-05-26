@@ -1,6 +1,4 @@
-import Packet, { decodePacket } from "@/lib/dns/Packet";
-import { decodePacketFlags, OpCode, PacketType, RCode } from "@/lib/dns/PacketFlags";
-import { QClass, QType } from "@/lib/dns/Question";
+import { decodePacket, OpCode, PacketType, RCode, QClass, QType, Packet } from "@/dns";
 
 describe('Packet', () => {
   test('Packet Decode', () => {

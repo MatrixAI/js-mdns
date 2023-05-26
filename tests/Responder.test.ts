@@ -1,4 +1,4 @@
-import Responder from '@/lib/Responder';
+import Responder from '@/Responder';
 import { testUtility } from './utils';
 
 describe('Responder', () => {

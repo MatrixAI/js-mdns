@@ -29,3 +29,5 @@ class MDNS extends EventTarget {
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
   queryServices: (type: string, protocol: 'udp' | 'tcp') => Promise<void>
 }
+
+export default MDNS;

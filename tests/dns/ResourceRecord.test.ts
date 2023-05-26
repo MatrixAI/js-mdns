@@ -1,5 +1,4 @@
-import { decodeResourceRecords, RClass, RType } from "@/lib/dns/ResourceRecord";
-import { encodeUInt32BE, encodeName, encodeUInt16BE, encodeIPv6, decodeIPv6 } from "@/lib/dns/utils";
+import { decodeResourceRecords, RClass, RType, encodeUInt32BE, encodeName, encodeUInt16BE, encodeIPv6, decodeIPv6 } from "@/dns";
 import { fc, testProp } from "@fast-check/jest";
 
 describe('ResourceRecord', () => {

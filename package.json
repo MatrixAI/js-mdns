@@ -35,8 +35,13 @@
     "typescript-demo-lib": "ts-node src/bin/typescript-demo-lib.ts"
   },
   "dependencies": {
+    "@matrixai/async-cancellable": "^1.1.0",
     "@matrixai/async-init": "^1.8.2",
+    "@matrixai/contexts": "^1.0.0",
+    "@matrixai/errors": "^1.1.7",
+    "@matrixai/timer": "^1.1.0",
     "dns-packet": "^5.6.0",
+    "jest-extended": "^3.2.4",
     "lexicographic-integer": "^1.1.0",
     "threads": "^1.6.5",
     "uuid": "^8.3.0"

@@ -9,6 +9,8 @@ import {
   RCode,
   ResourceRecord,
   StringRecord,
+  TXTRecord,
+  SRVRecordData,
 } from './types';
 
 // Packet Flag Masks
@@ -35,78 +37,77 @@ function concatUInt8Array(...arrays: Uint8Array[]) {
   return result;
 }
 
-function readUInt16BE(data: Uint8Array, offset: number = 0): number {
-  return (data[offset] << 8) | data[offset + 1];
-}
-
 function encodeUInt16BE(value: number): Uint8Array {
-  return new Uint8Array([(value >> 8) & 0xff, value & 0xff]);
-}
-
-function readUInt32BE(data: Uint8Array, offset: number = 0): number {
-  return (
-    (data[offset] << 24) |
-    (data[offset + 1] << 16) |
-    (data[offset + 2] << 8) |
-    data[offset + 3]
-  );
+  const buffer = new Uint8Array(2);
+  new DataView(buffer.buffer).setUint16(0, value, false);
+  return buffer;
 }
 
 function encodeUInt32BE(value: number): Uint8Array {
-  return new Uint8Array([
-    (value >> 24) & 0xff,
-    (value >> 16) & 0xff,
-    (value >> 8) & 0xff,
-    value & 0xff,
-  ]);
+  const buffer = new Uint8Array(4);
+  new DataView(buffer.buffer).setUint32(0, value, false);
+  return buffer;
 }
 
-// Remember, the whole packet needs to be fed into this function, as the pointer is relative to the start of the packet.
-function toName(data: Uint8Array, offset: number = 0): DecodedData<string> {
-  let currentIndex = offset;
-  let name = '';
+// RFC 1035 4.1.4. Message compression:
+  //  In order to reduce the size of messages, the domain system utilizes a
+  //   compression scheme which eliminates the repetition of domain names in a
+  //   message.  In this scheme, an entire domain name or a list of labels at
+  //   the end of a domain name is replaced with a pointer to a PRIOR occurrence
+  //   of the same name.
+  //
+  //  The compression scheme allows a domain name in a message to be
+  //  represented as either:
+  //    - a sequence of labels ending in a zero octet
+  //    - a pointer
+  //    - a sequence of labels ending with a pointer
+  // Revisit this later in case incorrect
+function parseLabels(input: Uint8Array, original: Uint8Array, compression: boolean = true): DecodedData<string> {
+  let currentIndex = 0;
+  let label = '';
   let readBytes = 0;
-  let foundPointer = false;
 
-  while (data[currentIndex] !== 0) {
-    if ((data[currentIndex] & 0xc0) === 0xc0) {
-      const pointerOffset = readUInt16BE(data, currentIndex) & 0x3fff;
-      currentIndex = pointerOffset;
-      readBytes += 2; // Compression pointer occupies 2 bytes
-      foundPointer = true;
+  let foundInitialPointer = false;
+  let currentBuffer = input;
+
+  while (currentBuffer[currentIndex] !== 0 && currentIndex < currentBuffer.byteLength) {
+    if ((currentBuffer[currentIndex] & 0xc0) === 0xc0 && compression) {
+      const dv = new DataView(currentBuffer.buffer, currentBuffer.byteOffset);
+      const pointerOffset = dv.getUint16(currentIndex, false) & 0x3fff;
+
+      foundInitialPointer = true; // The initial, or outermost pointer has been found
+      currentBuffer = original; // set the currentBuffer to the original buffer to get the full scope of the packet
+      currentIndex = pointerOffset; // set the currentIndex to the offset of the pointer in relation to the original buffer that is passed in
     } else {
-      const labelLength = data[currentIndex];
-      const label = new TextDecoder().decode(
-        data.subarray(currentIndex + 1, currentIndex + 1 + labelLength),
+      const labelLength = currentBuffer[currentIndex++];
+      label += new TextDecoder().decode(
+        currentBuffer.subarray(currentIndex, currentIndex + labelLength),
       );
-      name += label + '.';
-      currentIndex += labelLength + 1;
-      if (!foundPointer) readBytes += labelLength + 1; // Label length + label characters occupy labelLength + 1 bytes
+      label += '.';
+      currentIndex += labelLength;
+      if (!foundInitialPointer) readBytes += 1 + labelLength; // Label Length Byte + Length of Label Itself
     }
   }
 
-  if (!foundPointer) readBytes += 1; // Include the terminating null byte
+  if (!foundInitialPointer) readBytes += 1; // Include the terminating null byte if the pointer has not been found
+  else readBytes += 2;
 
-  return { data: name.slice(0, -1), readBytes };
+  return { data: label.slice(0, -1), remainder: input.subarray(readBytes) };
 }
 
-function fromName(name: string): Uint8Array {
-  const labels = name.split('.');
+// Revisit this later...
+function generateLabels(input: string, terminator: number[] = [0]): Uint8Array {
+  const labels = input.split('.');
   const encodedName: number[] = [];
 
   for (const label of labels) {
-    if (label.length > 63) {
-      throw new Error(
-        `Label "${label}" exceeds the maximum length of 63 characters.`,
-      );
-    }
 
     encodedName.push(label.length);
 
     for (let i = 0; i < label.length; i++) {
       const codePoint = label.codePointAt(i);
       if (codePoint === undefined) {
-        throw new Error(`Failed to retrieve code point for label "${label}".`);
+        continue;
       }
 
       if (codePoint > 127) {
@@ -122,16 +123,17 @@ function fromName(name: string): Uint8Array {
     }
   }
 
-  encodedName.push(0); // Terminating null byte
+  encodedName.push(...terminator); // Terminating null byte
 
   return new Uint8Array(encodedName);
 }
 
 function toIPv6(buffer: Uint8Array, offset: number = 0): string {
+  const dv = new DataView(buffer.buffer, buffer.byteOffset + offset);
   const parts: string[] = [];
 
-  for (let i = offset; i < offset + 16; i += 2) {
-    const value = readUInt16BE(buffer, i).toString(16);
+  for (let i = 0; i < 16; i += 2) {
+    const value = dv.getUint16(i, false).toString(16);
     parts.push(value);
   }
 
@@ -147,26 +149,41 @@ function fromIPv6(ip: string): Uint8Array {
   for (const part of parts) {
     const hexPart = parseInt(part, 16);
 
-    buffer[offset++] = hexPart >> 8;
-    buffer[offset++] = hexPart & 0xff;
+    const encoded = encodeUInt16BE(hexPart);
+    buffer.set(encoded, offset);
+    offset += 2;
   }
 
   return buffer;
 }
 
-function toPacket(buffer: Uint8Array): Packet {
-  const id = readUInt16BE(buffer, 0);
-  const flags = readUInt16BE(buffer, 2);
-  const qdcount = readUInt16BE(buffer, 4); // Question Count
-  const ancount = readUInt16BE(buffer, 6); // Answer Count
-  const nscount = readUInt16BE(buffer, 8); // Authority Count
-  const arcount = readUInt16BE(buffer, 10); // Additional Count
+function parsePacket(input: Uint8Array, original: Uint8Array): Packet {
+  const dv = new DataView(input.buffer, input.byteOffset);
+
+  let inputBuffer = input.subarray(12); // Skip the header
+
+  const id = dv.getUint16(0, false);
+  const flags = dv.getUint16(2, false);
+  const qdcount = dv.getUint16(4, false); // Question Count
+  const ancount = dv.getUint16(6, false); // Answer Count
+  const nscount = dv.getUint16(8, false); // Authority Count
+  const arcount = dv.getUint16(10, false); // Additional Count
+
+  const { data: questions, remainder } = parseQuestions(inputBuffer, original, qdcount);
+  inputBuffer = remainder;
 
   return {
     id,
     flags: toPacketFlags(flags),
-    questions: toQuestions(buffer, 12, qdcount).data,
+    questions,
+    answers: [],
+    additional: []
   };
+}
+
+function fromPacket(packet: Packet): Uint8Array {
+  // todo
+  return new Uint8Array();
 }
 
 function toPacketFlags(flags: number): PacketFlags {
@@ -203,35 +220,41 @@ function fromPacketFlags(flags: PacketFlags): number {
   return encodedFlags;
 }
 
-function toQuestions(
-  buffer: Uint8Array,
-  offset: number = 0,
+function parseQuestions(
+  input: Uint8Array,
+  original: Uint8Array,
   qdcount: number = 1,
 ): DecodedData<Question[]> {
-  let totalReadBytes = 0;
-  const questions: Question[] = [];
-  while (totalReadBytes < buffer.byteLength && questions.length < qdcount) {
-    const totalReadBytesOffset = offset + totalReadBytes;
+  let inputBuffer = input;
 
-    const { data: name, readBytes } = toName(buffer, totalReadBytesOffset);
+  const questions: Question[] = [];
+
+  while (inputBuffer.byteLength !== 0 && questions.length < qdcount) {
+
+    const { data: name, remainder } = parseLabels(inputBuffer, original);
+    inputBuffer = remainder;
+
+    // Remember, will error if out of bounds or running for too long, handle this later
+    const dv = new DataView(remainder.buffer, remainder.byteOffset);
     questions.push({
       name,
-      type: readUInt16BE(buffer, totalReadBytesOffset + readBytes),
-      class: readUInt16BE(buffer, totalReadBytesOffset + readBytes + 2),
+      type: dv.getUint16(0, false),
+      class: dv.getUint16(2, false),
     });
 
-    totalReadBytes += readBytes + 4;
+    inputBuffer = inputBuffer.subarray(4);
   }
+
   return {
     data: questions,
-    readBytes: totalReadBytes,
+    remainder: inputBuffer,
   };
 }
 
-function fromQuestions(questions: Question[]): Uint8Array {
+function generateQuestions(questions: Question[]): Uint8Array {
   const encodedQuestions: number[] = [];
   for (const question of questions) {
-    const encodedName = fromName(question.name);
+    const encodedName = generateLabels(question.name);
     // Implement Name Compression Later
     encodedQuestions.push(...encodedName);
     encodedQuestions.push((question.type >> 8) & 0xff, question.type & 0xff);
@@ -240,22 +263,25 @@ function fromQuestions(questions: Question[]): Uint8Array {
   return new Uint8Array(encodedQuestions);
 }
 
-function toResourceRecords(
-  buffer: Uint8Array,
-  offset: number = 0,
+function parseResourceRecords(
+  input: Uint8Array,
+  original: Uint8Array,
   rrcount: number = 1,
 ): DecodedData<ResourceRecord[]> {
-  let totalReadBytes = 0;
-  const records: ResourceRecord[] = [];
-  while (totalReadBytes < buffer.byteLength && records.length < rrcount) {
-    const totalReadBytesOffset = offset + totalReadBytes;
+  let inputBuffer = input;
 
-    const { data: name, readBytes } = toName(buffer, totalReadBytesOffset);
+  const records: ResourceRecord[] = [];
+
+  while (inputBuffer.byteLength !== 0 && records.length < rrcount) {
+    const { data: name, remainder } = parseLabels(inputBuffer, original);
+    inputBuffer = remainder;
+
+    const dv = new DataView(inputBuffer.buffer, inputBuffer.byteOffset);
 
     let flush = false;
 
-    const type: RType = readUInt16BE(buffer, totalReadBytesOffset + readBytes);
-    let rclass: RClass = readUInt16BE(buffer, totalReadBytesOffset + readBytes + 2);
+    const type: RType = dv.getUint16(0, false);
+    let rclass: RClass = dv.getUint16(2, false);
 
     // Flush bit cannot exist on OPT records
     if (type !== RType.OPT) {
@@ -263,67 +289,157 @@ function toResourceRecords(
       rclass = rclass & NOT_FLUSH_MASK;
     }
 
-    const ttl = readUInt32BE(buffer, totalReadBytesOffset + readBytes + 4);
-    const rdlength = readUInt16BE(buffer, totalReadBytesOffset + readBytes + 8);
+    const ttl = dv.getUint32(4, false);
+    const rdlength = dv.getUint16(8, false);
 
-    const dataOffset = totalReadBytesOffset + readBytes + 10;
+    const slicedRDataBuffer = remainder.subarray(
+      10,
+      10 + rdlength,
+    );
+
+    let resourceRecord: ResourceRecord;
 
     if (isStringRType(type)) {
-      const sliecedStringDataBuffer = buffer.subarray(
-        dataOffset,
-        dataOffset + rdlength,
-      );
 
       let data: string;
-      if (type === RType.A) data = sliecedStringDataBuffer.join('.');
-      else if (type === RType.AAAA) data = toIPv6(sliecedStringDataBuffer);
-      else data = toName(sliecedStringDataBuffer, 0).data;
+      if (type === RType.A) data = slicedRDataBuffer.join('.');
+      else if (type === RType.AAAA) data = toIPv6(slicedRDataBuffer);
+      else data = parseLabels(slicedRDataBuffer, original).data;
 
-      const stringRecord: StringRecord = {
+      resourceRecord = {
         name,
         type,
         class: rclass,
         flush,
         ttl,
-        data,
+        data
       };
-      records.push(stringRecord);
     } else if (type === RType.TXT) {
-      // ???
-    } else if (type === RType.SRV) {
-      // ???
+      resourceRecord = {
+        name,
+        type,
+        class: rclass,
+        flush,
+        ttl,
+        data: parseTXTRecordData(slicedRDataBuffer, rdlength).data,
+      };
+    } else if (type == RType.SRV) {
+      resourceRecord = {
+        name,
+        type,
+        class: rclass,
+        flush,
+        ttl,
+        data: parseSRVRecordData(slicedRDataBuffer, original, rdlength).data,
+      };
+    } else {
+      // Todo, SRV, OPT, NSEC etc
+      resourceRecord = {
+        name,
+        type: RType.A,
+        class: rclass,
+        flush,
+        ttl,
+        data: "",
+      };
     }
 
-    totalReadBytes += readBytes + 10 + rdlength;
+    records.push(resourceRecord);
+    inputBuffer = inputBuffer.subarray(10 + rdlength);
   }
+
 
   return {
     data: records,
-    readBytes: totalReadBytes,
+    remainder: inputBuffer,
   };
 }
 
-function fromResourceRecords(records: ResourceRecord[]): Uint8Array {
+function parseTXTRecordData(input: Uint8Array, rdlength: number = input.byteLength): DecodedData<Record<string, string>> {
+  let inputBuffer = input.subarray(0, rdlength);
+  const txtAttributes: Record<string, string> = {};
+
+  while (inputBuffer.byteLength !== 0) {
+    const textLength = inputBuffer[0];
+    const decodedPair = new TextDecoder().decode(inputBuffer.subarray(1, textLength + 1));
+
+    const [key, value] = decodedPair.split('=');
+
+    txtAttributes[key] = typeof value !== "undefined" ? value : "";
+    inputBuffer = inputBuffer.subarray(textLength + 1);
+  }
+
+  return {
+    data: txtAttributes,
+    remainder: input.subarray(rdlength),
+  };
+}
+
+function parseSRVRecordData(input: Uint8Array, original: Uint8Array, rdlength: number = input.byteLength): DecodedData<SRVRecordData> {
+  const dv = new DataView(input.buffer, input.byteOffset);
+  const priority = dv.getUint16(0, false);
+  const weight = dv.getUint16(2, false);
+  const port = dv.getUint16(4, false);
+
+  const target = parseLabels(input.subarray(6), original);
+
+  return {
+    data: {
+      port,
+      priority,
+      weight,
+      target: target.data,
+    },
+    remainder: input.subarray(rdlength),
+  }
+}
+
+function generateResourceRecords(records: ResourceRecord[]): Uint8Array {
   const buffer = new Uint8Array();
   for (const record of records) {
     // Implement Name Compression Later
-    const encodedName = fromName(record.name);
+    const encodedName = generateLabels(record.name);
 
+    let rdata: Uint8Array;
     if (isStringRecord(record)) {
-      let data: Uint8Array;
       if (record.type === RType.A) {
-        data = new Uint8Array(record.data.split('.').map((v) => Number(v)));
+        rdata = new Uint8Array(record.data.split('.').map((v) => Number(v)));
       }
       else if (record.type === RType.AAAA) {
-        data = fromIPv6(record.data);
+        rdata = fromIPv6(record.data);
       }
       else {
-        data = fromName(record.data);
+        rdata = generateLabels(record.data);
       }
+    }
+    else if (record.type === RType.TXT) {
+      rdata = generateTXTRecordData(record.data);
+    }
+    else {
+      rdata = new Uint8Array();
     }
 
   }
   return buffer;
+}
+
+function generateTXTRecordData(data: Record<string, string>): Uint8Array {
+  const encodedAttributes = Object.entries(data).flatMap(([key, val]) => {
+    const encodedPair = new TextEncoder().encode(`${key}=${val}`);
+    return [encodedPair.length, ...encodedPair];
+  });
+  return new Uint8Array(encodedAttributes);
+}
+
+function generateSRVRecordData(data: SRVRecordData): Uint8Array {
+  const buffer = new Uint8Array(6);
+  const dv = new DataView(buffer.buffer);
+
+  dv.setUint16(0, data.priority, false);
+  dv.setUint16(2, data.weight, false);
+  dv.setUint16(4, data.port, false);
+
+  return concatUInt8Array(buffer, generateLabels(data.target));
 }
 
 function isStringRecord(record: ResourceRecord): record is StringRecord {
@@ -341,18 +457,19 @@ function isStringRType(type: RType): type is StringRecord['type'] {
 
 export {
   concatUInt8Array,
-  readUInt16BE,
   encodeUInt16BE,
-  readUInt32BE,
   encodeUInt32BE,
-  toName,
-  fromName,
+  parseLabels,
+  generateLabels,
   toIPv6,
   fromIPv6,
-  toPacket,
+  parsePacket,
   toPacketFlags,
   fromPacketFlags,
-  toQuestions,
-  fromQuestions,
-  toResourceRecords,
+  parseQuestions,
+  generateQuestions,
+  parseResourceRecords,
+  generateResourceRecords,
+  generateTXTRecordData,
+  generateSRVRecordData
 };

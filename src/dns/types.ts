@@ -1,12 +1,14 @@
 interface DecodedData<T> {
   data: T;
-  readBytes: number;
+  remainder: Uint8Array;
 }
 
 type Packet = {
   id: number;
   flags: PacketFlags;
-  questions: Question[];
+  questions: Array<Question>;
+  answers: ResourceRecord[];
+  additional: ResourceRecord[];
 };
 
 type PacketFlags = {
@@ -50,7 +52,6 @@ type Question = {
 const enum QClass { // RFC 1035 3.2.4. 3.2.5.
   IN = 1, // The internet
   ANY = 255,
-  // Incomplete list
 }
 
 const enum QType { // RFC 1035 3.2.2. 3.2.3.
@@ -63,7 +64,6 @@ const enum QType { // RFC 1035 3.2.2. 3.2.3.
   OPT = 41, // RFC 6891
   NSEC = 47, // RFC 4034 4.
   ANY = 255,
-  // Incomplete list
 }
 
 type ResourceRecord =
@@ -106,17 +106,19 @@ type StringRecord = BaseRecord<
   string
 >;
 
-type TXTRecord = BaseRecord<RType.TXT, Map<string, string>>;
+type TXTRecord = BaseRecord<RType.TXT, Record<string, string>>;
 
 type SRVRecord = BaseRecord<
   RType.SRV,
-  {
-    port: number;
-    target: string;
-    priority: number;
-    weight: number;
-  }
+  SRVRecordData
 >;
+
+type SRVRecordData = {
+  port: number;
+  target: string;
+  priority: number;
+  weight: number;
+}
 
 // This will have to be fleshed out later
 type OptRecord = {
@@ -152,6 +154,7 @@ export type {
   StringRecord,
   TXTRecord,
   SRVRecord,
+  SRVRecordData,
   OptRecord,
   NSECRecord,
 };

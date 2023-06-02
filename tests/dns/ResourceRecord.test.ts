@@ -1,32 +1,37 @@
 import { fc, testProp } from '@fast-check/jest';
 import {
-  toResourceRecords,
+  parseResourceRecords,
   RClass,
   RType,
   encodeUInt32BE,
-  fromName,
+  generateLabels,
   encodeUInt16BE,
   fromIPv6,
   toIPv6,
   concatUInt8Array,
+  generateTXTRecordData,
+  generateSRVRecordData,
 } from '@/dns';
+
+const FC_UINT32 = fc.integer({ min: 0, max: 4294967295 }); // 32-Bit Unsigned Integer Limits
+const FC_UINT16 = fc.integer({ min: 0, max: 65535 }); // 16-Bit Unsigned Integer Limits
 
 describe('ResourceRecord', () => {
   testProp(
-    'Decode - A',
+    'parse a record',
     [
       fc.record({
         name: fc.domain(),
         type: fc.constant(RType.A),
         flush: fc.boolean(),
         class: fc.constant(RClass.IN),
-        ttl: fc.integer({ min: -2147483648, max: 2147483647 }), // 32-bit Signed Integer Limits
+        ttl: FC_UINT32, // 32-bit Signed Integer Limits
         data: fc.ipV4(),
       }),
     ],
     (originalRR) => {
       const rawRR: Uint8Array = concatUInt8Array(
-        fromName(originalRR.name),
+        generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
         encodeUInt16BE(
           originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
@@ -37,63 +42,59 @@ describe('ResourceRecord', () => {
           .concat(originalRR.data.split('.').map((s) => parseInt(s)))
         ),
       );
-      const decodedRR = toResourceRecords(rawRR, 0, 1);
+      const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
 
-      expect(decodedRR).toEqual({
-        data: [originalRR],
-        readBytes: rawRR.byteLength,
-      });
+      expect(decodedRR.data).toEqual([originalRR]);
+      expect(decodedRR.remainder.length).toEqual(0);
     },
   );
 
   testProp(
-    'Decode - AAAA',
+    'parse aaaa record',
     [
       fc.record({
         name: fc.domain(),
         type: fc.constant(RType.AAAA),
         flush: fc.boolean(),
         class: fc.constant(RClass.IN),
-        ttl: fc.integer({ min: -2147483648, max: 2147483647 }), // 32-bit Signed Integer Limits
-        data: fc.ipV6().chain((ip) => fc.constant(toIPv6(fromIPv6(ip)))),
+        ttl: FC_UINT32,
+        data: fc.ipV6().chain((ip) => fc.constant(toIPv6(fromIPv6("0:0:0:0:0:0:0:0")))),
       }),
     ],
     (originalRR) => {
       const rawRR: Uint8Array = concatUInt8Array(
-        fromName(originalRR.name),
+        generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
         encodeUInt16BE(
           originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
         ),
         encodeUInt32BE(originalRR.ttl), // TTL: 60 seconds
-        new Uint8Array([0x00, 0x10]), // Data length: 16 bytes
-        fromIPv6(originalRR.data)
+        encodeUInt16BE(16), // Data length: 16 bytes
+        fromIPv6(originalRR.data),
       );
-      const decodedRR = toResourceRecords(rawRR, 0, 1);
+      const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
 
-      expect(decodedRR).toEqual({
-        data: [originalRR],
-        readBytes: rawRR.byteLength,
-      });
+      expect(decodedRR.data).toEqual([originalRR]);
+      expect(decodedRR.remainder.length).toEqual(0);
     },
   );
 
   testProp(
-    'Decode - CNAME, PTR',
+    'parse cname ptr record',
     [
       fc.record({
         name: fc.domain(),
         type: fc.constantFrom(RType.CNAME, RType.PTR),
         flush: fc.boolean(),
         class: fc.constant(RClass.IN),
-        ttl: fc.integer({ min: -2147483648, max: 2147483647 }), // 32-bit Signed Integer Limits
+        ttl: FC_UINT32,
         data: fc.domain(),
       }),
     ],
     (originalRR) => {
-      const encodedData = fromName(originalRR.data);
+      const encodedData = generateLabels(originalRR.data);
       const rawRR: Uint8Array = concatUInt8Array(
-        fromName(originalRR.name),
+        generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
         encodeUInt16BE(
           originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
@@ -102,12 +103,79 @@ describe('ResourceRecord', () => {
         encodeUInt16BE(encodedData.byteLength), // Data length: 4 bytes
         encodedData,
       );
-      const decodedRR = toResourceRecords(rawRR, 0, 1);
+      const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
 
-      expect(decodedRR).toEqual({
-        data: [originalRR],
-        readBytes: rawRR.byteLength,
-      });
+      expect(decodedRR.data).toEqual([originalRR]);
+      expect(decodedRR.remainder.length).toEqual(0);
+    },
+  );
+
+  testProp(
+    'parse txt record',
+    [
+      fc.record({
+        name: fc.domain(),
+        type: fc.constant(RType.TXT),
+        flush: fc.boolean(),
+        class: fc.constant(RClass.IN),
+        ttl: FC_UINT32,
+        data: fc.dictionary(fc.unicodeString(), fc.unicodeString()),
+      }),
+    ],
+    (originalRR) => {
+      const encodedData = generateTXTRecordData(originalRR.data);
+      const rawRR: Uint8Array = concatUInt8Array(
+        generateLabels(originalRR.name),
+        encodeUInt16BE(originalRR.type),
+        encodeUInt16BE(
+          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
+        ),
+        encodeUInt32BE(originalRR.ttl),
+
+        encodeUInt16BE(encodedData.byteLength),
+        encodedData
+      );
+      const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
+
+      expect(decodedRR.data).toEqual([originalRR]);
+      expect(decodedRR.remainder.length).toEqual(0);
+    },
+  );
+
+  testProp(
+    'parse srv record',
+    [
+      fc.record({
+        name: fc.domain(),
+        type: fc.constant(RType.SRV),
+        flush: fc.boolean(),
+        class: fc.constant(RClass.IN),
+        ttl: FC_UINT32,
+        data: fc.record({
+          priority: FC_UINT16,
+          weight: FC_UINT16,
+          port: FC_UINT16,
+          target: fc.domain()
+        })
+      }),
+    ],
+    (originalRR) => {
+      const encodedData = generateSRVRecordData(originalRR.data);
+      const rawRR: Uint8Array = concatUInt8Array(
+        generateLabels(originalRR.name),
+        encodeUInt16BE(originalRR.type),
+        encodeUInt16BE(
+          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
+        ),
+        encodeUInt32BE(originalRR.ttl),
+
+        encodeUInt16BE(encodedData.byteLength),
+        encodedData
+      );
+      const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
+
+      expect(decodedRR.data).toEqual([originalRR]);
+      expect(decodedRR.remainder.length).toEqual(0);
     },
   );
 });

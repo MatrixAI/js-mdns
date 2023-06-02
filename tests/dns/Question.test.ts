@@ -1,5 +1,5 @@
 import { testProp, fc } from '@fast-check/jest';
-import { toQuestions, QClass, QType, fromName, encodeUInt16BE, concatUInt8Array } from '@/dns';
+import { parseQuestions, QClass, QType, generateLabels, encodeUInt16BE, concatUInt8Array } from '@/dns';
 
 // For all integers in set of values in QType/QClass
 const FC_QTYPES = fc.constantFrom(QType.A, QType.AAAA, QType.ANY, QType.CNAME, QType.NSEC, QType.OPT, QType.PTR, QType.TXT, QType.SRV);
@@ -12,32 +12,26 @@ const fc_question = fc.record({
 });
 
 describe('Question', () => {
-  testProp('Decode - Single String Name', [fc_question], (originalQuestion) => {
-    const buffer = fromName(originalQuestion.name);
-    const nameLength = buffer.byteLength;
-    const view = new DataView(buffer.buffer);
+  testProp('parse single string name', [fc_question], (originalQuestion) => {
 
     const rawQuestion = concatUInt8Array(
-      fromName(originalQuestion.name),
+      generateLabels(originalQuestion.name),
       encodeUInt16BE(originalQuestion.type),
       encodeUInt16BE(originalQuestion.class)
     );
 
-    const decodedQuestion = toQuestions(rawQuestion, 0, 1);
+    const decodedQuestion = parseQuestions(rawQuestion, rawQuestion, 1);
 
-    expect(decodedQuestion).toEqual({
-      data: [originalQuestion],
-      readBytes: rawQuestion.byteLength,
-    });
+    expect(decodedQuestion.data).toEqual([originalQuestion]);
   });
 
   testProp(
-    'Decode - Multiple String Name',
+    'parse multiple string name',
     [fc.array(fc_question, { minLength: 2, maxLength: 10 })],
     (originalQuestions) => {
       const originalQuestionUint8Array = originalQuestions.flatMap((q) => {
         return [
-          ...fromName(q.name),
+          ...generateLabels(q.name),
           ...encodeUInt16BE(q.type),
           ...encodeUInt16BE(q.class),
         ];
@@ -45,20 +39,18 @@ describe('Question', () => {
 
       const rawQuestion = new Uint8Array(originalQuestionUint8Array);
 
-      const decodedQuestion = toQuestions(
+      const decodedQuestion = parseQuestions(
         rawQuestion,
-        0,
+        rawQuestion,
         originalQuestions.length,
       );
 
-      expect(decodedQuestion).toEqual({
-        data: originalQuestions,
-        readBytes: rawQuestion.byteLength,
-      });
+      expect(decodedQuestion.data).toEqual(originalQuestions);
+      expect(decodedQuestion.remainder.length).toEqual(0);
     },
   );
 
-  testProp('Decode - Pointer Name', [fc_question], (originalQuestion) => {
+  testProp('parse pointer name', [fc_question], (originalQuestion) => {
     // Universal Type and Class
     const typeAndClass = concatUInt8Array(
       encodeUInt16BE(originalQuestion.type),
@@ -67,14 +59,14 @@ describe('Question', () => {
 
     // Question with fake name to see if the pointer will select the correct record
     const questionWithFakeName = concatUInt8Array(
-      fromName('fake.local'),
+      generateLabels('fake.local'),
       typeAndClass,
     );
 
     // Uint8Array with a question and a pointer to that question
     const rawQuestion = concatUInt8Array(
       questionWithFakeName,
-      fromName(originalQuestion.name),
+      generateLabels(originalQuestion.name),
       typeAndClass,
 
       // Pointer Question Starts with 0xC0
@@ -82,9 +74,42 @@ describe('Question', () => {
       typeAndClass,
     );
 
-    const decodedQuestion = toQuestions(rawQuestion, 0, 3);
+    const decodedQuestion = parseQuestions(rawQuestion, rawQuestion, 3);
 
     expect(decodedQuestion.data[2].name).toEqual(originalQuestion.name);
-    expect(decodedQuestion.readBytes).toEqual(rawQuestion.byteLength);
+    expect(decodedQuestion.remainder.length).toEqual(0);
   });
+
+  testProp(
+    'parse string pointer name',
+    [fc_question, fc.domain()],
+    (originalQuestion, randomDomain) => {
+      // Universal Type and Class
+      const typeAndClass = concatUInt8Array(
+        encodeUInt16BE(originalQuestion.type),
+        encodeUInt16BE(originalQuestion.class),
+      );
+
+      // Question with fake name to see if the pointer will select the correct record
+      const questionWithFakeName = concatUInt8Array(
+        generateLabels('fake.local'),
+        typeAndClass,
+      );
+
+      // Uint8Array with a question and a pointer to that question
+      const rawQuestion = concatUInt8Array(
+        // questionWithFakeName,
+        generateLabels(originalQuestion.name),
+        typeAndClass,
+
+        // Pointer Question Starts with 0xC0
+        generateLabels(randomDomain, [0xc0, 0]),
+        typeAndClass,
+      );
+
+      const decodedQuestion = parseQuestions(rawQuestion, rawQuestion, 2);
+
+      expect(decodedQuestion.data[1].name).toEqual(`${randomDomain}.${originalQuestion.name}`);
+      expect(decodedQuestion.remainder.length).toEqual(0);
+    });
 });

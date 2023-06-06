@@ -4,6 +4,4 @@ class ErrorDNSParse<T> extends AbstractError<T> {
   static description = 'ErrorDNSParse';
 }
 
-export {
-  ErrorDNSParse,
-}
+export { ErrorDNSParse };

@@ -1,3 +1,4 @@
+import type { StringRecord } from '@/dns';
 import { fc, testProp } from '@fast-check/jest';
 import {
   parseResourceRecords,
@@ -12,7 +13,6 @@ import {
   generateTXTRecordData,
   generateSRVRecordData,
   generateResourceRecord,
-  StringRecord,
   parseResourceRecord,
 } from '@/dns';
 
@@ -33,7 +33,6 @@ describe('ResourceRecord', () => {
       }),
     ],
     (originalRR) => {
-
       const generatedRR = generateResourceRecord(originalRR as StringRecord);
       const parsedRR = parseResourceRecord(generatedRR, generatedRR);
 
@@ -57,13 +56,11 @@ describe('ResourceRecord', () => {
       const rawRR: Uint8Array = concatUInt8Array(
         generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
-        encodeUInt16BE(
-          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
-        ),
+        encodeUInt16BE(originalRR.class | (originalRR.flush ? 0x8000 : 0x0000)),
         encodeUInt32BE(originalRR.ttl), // TTL: 60 seconds
         new Uint8Array(
           [0x00, 0x04] // Data length: 4 bytes
-          .concat(originalRR.data.split('.').map((s) => parseInt(s)))
+            .concat(originalRR.data.split('.').map((s) => parseInt(s))),
         ),
       );
       const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
@@ -82,16 +79,18 @@ describe('ResourceRecord', () => {
         flush: fc.boolean(),
         class: fc.constant(RClass.IN),
         ttl: FC_UINT32,
-        data: fc.ipV6().chain((ip) => fc.constant(parseIPv6(generateIPv6("0:0:0:0:0:0:0:0")).data)),
+        data: fc
+          .ipV6()
+          .chain((ip) =>
+            fc.constant(parseIPv6(generateIPv6('0:0:0:0:0:0:0:0')).data),
+          ),
       }),
     ],
     (originalRR) => {
       const rawRR: Uint8Array = concatUInt8Array(
         generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
-        encodeUInt16BE(
-          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
-        ),
+        encodeUInt16BE(originalRR.class | (originalRR.flush ? 0x8000 : 0x0000)),
         encodeUInt32BE(originalRR.ttl), // TTL: 60 seconds
         encodeUInt16BE(16), // Data length: 16 bytes
         generateIPv6(originalRR.data),
@@ -120,9 +119,7 @@ describe('ResourceRecord', () => {
       const rawRR: Uint8Array = concatUInt8Array(
         generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
-        encodeUInt16BE(
-          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
-        ),
+        encodeUInt16BE(originalRR.class | (originalRR.flush ? 0x8000 : 0x0000)),
         encodeUInt32BE(originalRR.ttl), // TTL: 60 seconds
         encodeUInt16BE(encodedData.byteLength), // Data length: 4 bytes
         encodedData,
@@ -151,13 +148,11 @@ describe('ResourceRecord', () => {
       const rawRR: Uint8Array = concatUInt8Array(
         generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
-        encodeUInt16BE(
-          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
-        ),
+        encodeUInt16BE(originalRR.class | (originalRR.flush ? 0x8000 : 0x0000)),
         encodeUInt32BE(originalRR.ttl),
 
         encodeUInt16BE(encodedData.byteLength),
-        encodedData
+        encodedData,
       );
       const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
 
@@ -179,8 +174,8 @@ describe('ResourceRecord', () => {
           priority: FC_UINT16,
           weight: FC_UINT16,
           port: FC_UINT16,
-          target: fc.domain()
-        })
+          target: fc.domain(),
+        }),
       }),
     ],
     (originalRR) => {
@@ -188,13 +183,11 @@ describe('ResourceRecord', () => {
       const rawRR: Uint8Array = concatUInt8Array(
         generateLabels(originalRR.name),
         encodeUInt16BE(originalRR.type),
-        encodeUInt16BE(
-          originalRR.class | (originalRR.flush ? 0x8000 : 0x0000),
-        ),
+        encodeUInt16BE(originalRR.class | (originalRR.flush ? 0x8000 : 0x0000)),
         encodeUInt32BE(originalRR.ttl),
 
         encodeUInt16BE(encodedData.byteLength),
-        encodedData
+        encodedData,
       );
       const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
 

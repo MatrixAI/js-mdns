@@ -1,8 +1,8 @@
-import { CreateDestroyStartStop } from '@matrixai/async-init/dist/CreateDestroyStartStop';
 import { createSocket } from 'dgram';
 import { networkInterfaces } from 'os';
 import { promisify } from 'util';
-import {parsePacket} from './dns';
+import { CreateDestroyStartStop } from '@matrixai/async-init/dist/CreateDestroyStartStop';
+import { parsePacket } from './dns';
 
 const MDNS_TTL = 255;
 
@@ -21,17 +21,17 @@ class MDNS extends EventTarget {
   resolveHostname: boolean;
 
   public static createMDNS({
-    group = ["224.0.0.251", "ff02::fb"],
-    host = "::",
+    group = ['224.0.0.251', 'ff02::fb'],
+    host = '::',
     port = 5353,
     reuseAddr = true,
     resolveHostname = true,
-  } : {
-    group?: string | string[]
-    host?: string
-    port?: number
-    reuseAddr?: boolean
-    resolveHostname?: boolean
+  }: {
+    group?: string | string[];
+    host?: string;
+    port?: number;
+    reuseAddr?: boolean;
+    resolveHostname?: boolean;
   }) {
     const mdns = new this({
       hostname: 'abc.local',
@@ -68,7 +68,7 @@ class MDNS extends EventTarget {
       try {
         const packet = parsePacket(buffer);
         console.log(packet);
-        // if (packet.type === 'query') {
+        // If (packet.type === 'query') {
         //   this.handleQuery(packet, rinfo);
         // } else {
         // }
@@ -87,23 +87,19 @@ class MDNS extends EventTarget {
   public async destroy(): Promise<void> {}
 
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
-  async registerService (options: {
+  async registerService(options: {
     name: string;
     type: string;
     protocol: 'udp' | 'tcp';
     port: number;
     txt?: Record<string, string>;
-  }): Promise<void> {
+  }): Promise<void> {}
 
-  };
-
-  async unregisterService (
+  async unregisterService(
     name: string,
     type: string,
     protocol: 'udp' | 'tcp',
-  ): Promise<void> {
-
-  }
+  ): Promise<void> {}
 
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
   queryServices: (type: string, protocol: 'udp' | 'tcp') => Promise<void>;

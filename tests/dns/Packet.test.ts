@@ -1,5 +1,13 @@
-import { Packet, RClass, RType } from '@/dns';
-import { parsePacket, PacketOpCode, PacketType, RCode, QClass, QType } from '@/dns';
+import type { Packet } from '@/dns';
+import { RClass, RType } from '@/dns';
+import {
+  parsePacket,
+  PacketOpCode,
+  PacketType,
+  RCode,
+  QClass,
+  QType,
+} from '@/dns';
 
 describe('Packet', () => {
   test('parse a', () => {
@@ -82,19 +90,21 @@ describe('Packet', () => {
           name: '_http._tcp.local',
           type: QType.A,
           class: QClass.IN,
-          unicast: false
+          unicast: false,
         },
       ],
       additionals: [],
-      answers: [{
-        name: "_http._tcp.local",
-        class: RClass.IN,
-        type: RType.A,
-        ttl: 60,
-        flush: false,
-        data: "192.168.0.1"
-      }],
-      authorities: []
+      answers: [
+        {
+          name: '_http._tcp.local',
+          class: RClass.IN,
+          type: RType.A,
+          ttl: 60,
+          flush: false,
+          data: '192.168.0.1',
+        },
+      ],
+      authorities: [],
     } as Packet);
   });
 });

@@ -1,5 +1,5 @@
 import type { Packet } from '@/dns';
-import { toPacket, OpCode, PacketType, RCode, QClass, QType } from '@/dns';
+import { toPacket, PacketOpCode, PacketType, RCode, QClass, QType } from '@/dns';
 
 describe('Packet', () => {
   test('Packet Decode', () => {
@@ -67,7 +67,7 @@ describe('Packet', () => {
       id: 0,
       flags: {
         type: PacketType.RESPONSE,
-        opcode: OpCode.QUERY,
+        opcode: PacketOpCode.QUERY,
         rcode: RCode.NoError,
         authoritativeAnswer: true,
         truncation: false,

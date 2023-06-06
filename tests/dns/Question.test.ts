@@ -1,5 +1,5 @@
 import { testProp, fc } from '@fast-check/jest';
-import { parseQuestions, QClass, QType, generateLabels, encodeUInt16BE, concatUInt8Array } from '@/dns';
+import { parseQuestionRecords, QClass, QType, generateLabels, encodeUInt16BE, concatUInt8Array, generateQuestionRecord, parseQuestionRecord } from '@/dns';
 
 // For all integers in set of values in QType/QClass
 const FC_QTYPES = fc.constantFrom(QType.A, QType.AAAA, QType.ANY, QType.CNAME, QType.NSEC, QType.OPT, QType.PTR, QType.TXT, QType.SRV);
@@ -9,10 +9,23 @@ const fc_question = fc.record({
   name: fc.domain(),
   type: FC_QTYPES,
   class: FC_QCLASSES,
+  unicast: fc.boolean()
 });
 
-describe('Question', () => {
-  testProp('parse single string name', [fc_question], (originalQuestion) => {
+const fc_question_no_unicast = fc.record({
+  name: fc.domain(),
+  type: FC_QTYPES,
+  class: FC_QCLASSES,
+  unicast: fc.constant(false)
+});
+
+describe('question records', () => {
+  testProp('parse', [fc_question_no_unicast], (originalQuestion) => {
+    const generatedQuestion = generateQuestionRecord(originalQuestion);
+    const parsedQuestion = parseQuestionRecord(generatedQuestion, generatedQuestion);
+    expect(parsedQuestion.data).toEqual(originalQuestion);
+  });
+  testProp('parse single string name', [fc_question_no_unicast], (originalQuestion) => {
 
     const rawQuestion = concatUInt8Array(
       generateLabels(originalQuestion.name),
@@ -20,14 +33,14 @@ describe('Question', () => {
       encodeUInt16BE(originalQuestion.class)
     );
 
-    const decodedQuestion = parseQuestions(rawQuestion, rawQuestion, 1);
+    const decodedQuestion = parseQuestionRecords(rawQuestion, rawQuestion, 1);
 
     expect(decodedQuestion.data).toEqual([originalQuestion]);
   });
 
   testProp(
     'parse multiple string name',
-    [fc.array(fc_question, { minLength: 2, maxLength: 10 })],
+    [fc.array(fc_question_no_unicast, { minLength: 2, maxLength: 10 })],
     (originalQuestions) => {
       const originalQuestionUint8Array = originalQuestions.flatMap((q) => {
         return [
@@ -39,7 +52,7 @@ describe('Question', () => {
 
       const rawQuestion = new Uint8Array(originalQuestionUint8Array);
 
-      const decodedQuestion = parseQuestions(
+      const decodedQuestion = parseQuestionRecords(
         rawQuestion,
         rawQuestion,
         originalQuestions.length,
@@ -50,7 +63,7 @@ describe('Question', () => {
     },
   );
 
-  testProp('parse pointer name', [fc_question], (originalQuestion) => {
+  testProp('parse pointer name', [fc_question_no_unicast], (originalQuestion) => {
     // Universal Type and Class
     const typeAndClass = concatUInt8Array(
       encodeUInt16BE(originalQuestion.type),
@@ -74,7 +87,7 @@ describe('Question', () => {
       typeAndClass,
     );
 
-    const decodedQuestion = parseQuestions(rawQuestion, rawQuestion, 3);
+    const decodedQuestion = parseQuestionRecords(rawQuestion, rawQuestion, 3);
 
     expect(decodedQuestion.data[2].name).toEqual(originalQuestion.name);
     expect(decodedQuestion.remainder.length).toEqual(0);
@@ -82,7 +95,7 @@ describe('Question', () => {
 
   testProp(
     'parse string pointer name',
-    [fc_question, fc.domain()],
+    [fc_question_no_unicast, fc.domain()],
     (originalQuestion, randomDomain) => {
       // Universal Type and Class
       const typeAndClass = concatUInt8Array(
@@ -90,15 +103,8 @@ describe('Question', () => {
         encodeUInt16BE(originalQuestion.class),
       );
 
-      // Question with fake name to see if the pointer will select the correct record
-      const questionWithFakeName = concatUInt8Array(
-        generateLabels('fake.local'),
-        typeAndClass,
-      );
-
       // Uint8Array with a question and a pointer to that question
       const rawQuestion = concatUInt8Array(
-        // questionWithFakeName,
         generateLabels(originalQuestion.name),
         typeAndClass,
 
@@ -107,9 +113,10 @@ describe('Question', () => {
         typeAndClass,
       );
 
-      const decodedQuestion = parseQuestions(rawQuestion, rawQuestion, 2);
+      const decodedQuestion = parseQuestionRecords(rawQuestion, rawQuestion, 2);
 
       expect(decodedQuestion.data[1].name).toEqual(`${randomDomain}.${originalQuestion.name}`);
       expect(decodedQuestion.remainder.length).toEqual(0);
-    });
+    }
+  );
 });

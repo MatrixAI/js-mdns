@@ -9,11 +9,12 @@ import {
   RCode,
   ResourceRecord,
   StringRecord,
-  TXTRecord,
   SRVRecordValue,
   TXTRecordValue,
   PacketHeader,
 } from './types';
+
+import * as errors from "./errors";
 
 // Packet Flag Masks
 const AUTHORITATIVE_ANSWER_MASK = 0x400;
@@ -166,24 +167,31 @@ function generateIPv6(ip: string): Uint8Array {
   return buffer;
 }
 
-function parsePacket(input: Uint8Array, original: Uint8Array): Packet {
-  let inputBuffer = input; // Skip the header
+function parsePacket(input: Uint8Array): Packet {
+  let inputBuffer = input;
 
   const { data: header, remainder: postHeaderRemainder } = parsePacketHeader(input);
   inputBuffer = postHeaderRemainder;
 
-  const { data: questions, remainder: postQuestionRemainder } = parseQuestionRecords(inputBuffer, original, header.qdcount);
+  const { data: questions, remainder: postQuestionRemainder } = parseQuestionRecords(inputBuffer, input, header.qdcount);
   inputBuffer = postQuestionRemainder;
 
-  const { data: answers, remainder: postAnswerRemainder } = parseResourceRecords(inputBuffer, original, header.ancount);
+  const { data: answers, remainder: postAnswerRemainder } = parseResourceRecords(inputBuffer, input, header.ancount);
   inputBuffer = postAnswerRemainder;
+
+  const { data: authorities, remainder: postAuthorityRemainder } = parseResourceRecords(inputBuffer, input, header.nscount);
+  inputBuffer = postAuthorityRemainder;
+
+  const { data: additionals, remainder: postAdditionalRemainder } = parseResourceRecords(inputBuffer, input, header.arcount);
+  inputBuffer = postAdditionalRemainder;
 
   return {
     id: header.id,
     flags: header.flags,
     questions,
-    answers: answers,
-    additional: []
+    answers,
+    authorities,
+    additionals
   };
 }
 
@@ -233,10 +241,35 @@ function parsePacketFlags(input: Uint8Array): Parsed<PacketFlags> {
   }
 }
 
-
 function generatePacket(packet: Packet): Uint8Array {
-  // todo
-  return new Uint8Array();
+  const packetHeaderBuffer = generatePacketHeader({
+    id: packet.id,
+    flags: packet.flags,
+    qdcount: packet.questions.length,
+    ancount: packet.answers.length,
+    nscount: packet.authorities.length,
+    arcount: packet.additionals.length
+  });
+  return concatUInt8Array(
+    packetHeaderBuffer,
+    generateQuestionRecords(packet.questions),
+    generateResourceRecords(packet.answers),
+    generateResourceRecords(packet.authorities),
+    generateResourceRecords(packet.additionals)
+  );
+}
+
+function generatePacketHeader(header: PacketHeader): Uint8Array {
+  const packetHeaderBuffer = new Uint8Array(12);
+  const dv = new DataView(packetHeaderBuffer.buffer);
+  dv.setUint16(0, header.id, false);
+  packetHeaderBuffer.set(generatePacketFlags(header.flags), 2);
+  dv.setUint16(4, header.qdcount, false);
+  dv.setUint16(6, header.ancount, false);
+  dv.setUint16(8, header.nscount, false);
+  dv.setUint16(10, header.arcount, false);
+
+  return packetHeaderBuffer;
 }
 
 function generatePacketFlags(flags: PacketFlags): Uint8Array {
@@ -529,6 +562,7 @@ export {
   generateIPv6,
   parsePacket,
   parsePacketFlags,
+  generatePacket,
   generatePacketFlags,
   parseQuestionRecords,
   parseQuestionRecord,

@@ -1,5 +1,5 @@
 import type { Packet } from '@/dns';
-import { toPacket, PacketOpCode, PacketType, RCode, QClass, QType } from '@/dns';
+import { parsePacket, PacketOpCode, PacketType, RCode, QClass, QType } from '@/dns';
 
 describe('Packet', () => {
   test('Packet Decode', () => {
@@ -61,7 +61,7 @@ describe('Packet', () => {
       0x01, // IPv4 address: 192.168.0.1
     ]);
 
-    const decodedPacket = toPacket(rawPacket);
+    const decodedPacket = parsePacket(rawPacket);
 
     expect(decodedPacket).toEqual({
       id: 0,
@@ -82,8 +82,12 @@ describe('Packet', () => {
           name: '_http._tcp.local',
           type: QType.A,
           class: QClass.IN,
+          unicast: false
         },
       ],
+      additionals: [],
+      answers: [],
+      authorities: []
     } as Packet);
   });
 });

@@ -8,7 +8,8 @@ type Packet = {
   flags: PacketFlags;
   questions: Array<QuestionRecord>;
   answers: ResourceRecord[];
-  additional: ResourceRecord[];
+  authorities: ResourceRecord[];
+  additionals: ResourceRecord[];
 };
 
 type PacketHeader =  {

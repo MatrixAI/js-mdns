@@ -1,1 +1,1 @@
-export { default as Library } from './lib/Library';
+export * as dns from './dns';

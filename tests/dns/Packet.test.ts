@@ -1,8 +1,8 @@
-import type { Packet } from '@/dns';
+import { Packet, RClass, RType } from '@/dns';
 import { parsePacket, PacketOpCode, PacketType, RCode, QClass, QType } from '@/dns';
 
 describe('Packet', () => {
-  test('Packet Decode', () => {
+  test('parse a', () => {
     const rawPacket: Uint8Array = new Uint8Array([
       // Header
       0x00,
@@ -86,7 +86,14 @@ describe('Packet', () => {
         },
       ],
       additionals: [],
-      answers: [],
+      answers: [{
+        name: "_http._tcp.local",
+        class: RClass.IN,
+        type: RType.A,
+        ttl: 60,
+        flush: false,
+        data: "192.168.0.1"
+      }],
       authorities: []
     } as Packet);
   });

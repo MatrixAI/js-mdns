@@ -135,18 +135,25 @@ function generateLabels(input: string, terminator: number[] = [0]): Uint8Array {
   return new Uint8Array(encodedName);
 }
 
-function parseIPv6(buffer: Uint8Array): Parsed<string> {
-  const dv = new DataView(buffer.buffer, buffer.byteOffset);
+function parseIPv6(input: Uint8Array): Parsed<string> {
+  if (input.length < 16) throw new errors.ErrorDNSParse("IPv6 address is too short");
+
+  const dv = new DataView(input.buffer, input.byteOffset);
   const parts: string[] = [];
 
-  for (let i = 0; i < 16; i += 2) {
-    const value = dv.getUint16(i, false).toString(16);
-    parts.push(value);
+  try {
+    for (let i = 0; i < 16; i += 2) {
+      const value = dv.getUint16(i, false).toString(16);
+      parts.push(value);
+    }
+  }
+  catch (err) {
+    throw new errors.ErrorDNSParse('Invalid IPv6 address');
   }
 
   return {
     data: parts.join(':'),
-    remainder: buffer.subarray(16)
+    remainder: input.subarray(16)
   };
 }
 
@@ -196,6 +203,8 @@ function parsePacket(input: Uint8Array): Packet {
 }
 
 function parsePacketHeader(input: Uint8Array): Parsed<PacketHeader> {
+  if (input.length < 12) throw new errors.ErrorDNSParse("Packet header is too short");
+
   const dv = new DataView(input.buffer, input.byteOffset);
 
   const id = dv.getUint16(0, false);
@@ -220,6 +229,8 @@ function parsePacketHeader(input: Uint8Array): Parsed<PacketHeader> {
 }
 
 function parsePacketFlags(input: Uint8Array): Parsed<PacketFlags> {
+  if (input.length < 2) throw new errors.ErrorDNSParse("Packet flags are too short");
+
   const dv = new DataView(input.buffer, input.byteOffset);
   const flags = dv.getUint16(0, false);
   return {
@@ -316,9 +327,9 @@ function parseQuestionRecord(input: Uint8Array, original: Uint8Array): Parsed<Qu
   const { data: name, remainder } = parseLabels(inputBuffer, original);
   inputBuffer = remainder;
 
-  // Remember, will error if out of bounds or running for too long, handle this later
-  const dv = new DataView(remainder.buffer, remainder.byteOffset);
+  if (inputBuffer.length < 4) throw new errors.ErrorDNSParse("Question record is too short");
 
+  const dv = new DataView(remainder.buffer, remainder.byteOffset);
   const type = dv.getUint16(0, false);
   const qclass = dv.getUint16(2, false);
 
@@ -385,6 +396,7 @@ function parseResourceRecord(input: Uint8Array, original: Uint8Array): Parsed<Re
 
   let flush = false;
 
+  if (inputBuffer.length < 10) throw new errors.ErrorDNSParse("Resource record is too short");
   const type: RType = dv.getUint16(0, false);
   let rclass: RClass = dv.getUint16(2, false);
 
@@ -412,7 +424,7 @@ function parseResourceRecord(input: Uint8Array, original: Uint8Array): Parsed<Re
   } else if (type == RType.SRV) {
     parser = () => parseSRVRecordData(inputBuffer, original, rdlength);
   } else {
-    parser = () => ({data: undefined, remainder: inputBuffer})
+    parser = () => ({data: "", remainder: inputBuffer.subarray(rdlength)})
     // Todo, OPT, NSEC etc
   }
 
@@ -432,7 +444,7 @@ function parseResourceRecord(input: Uint8Array, original: Uint8Array): Parsed<Re
 
 function parseARecordData(input: Uint8Array, rdlength = 4): Parsed<string> {
   return {
-    data: input.join('.'),
+    data: input.subarray(0, 4).join('.'),
     remainder: input.subarray(rdlength),
   }
 }
@@ -462,6 +474,8 @@ function parseTXTRecordData(input: Uint8Array, rdlength: number = input.length):
 }
 
 function parseSRVRecordData(input: Uint8Array, original: Uint8Array, rdlength: number = input.length): Parsed<SRVRecordValue> {
+  if (input.length < 6 || rdlength < 6) throw new errors.ErrorDNSParse("SRV record data is too short");
+
   const dv = new DataView(input.buffer, input.byteOffset);
   const priority = dv.getUint16(0, false);
   const weight = dv.getUint16(2, false);

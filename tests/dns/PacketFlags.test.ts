@@ -1,22 +1,23 @@
 import { fc, testProp } from '@fast-check/jest';
 import {
-  toPacketFlags,
-  fromPacketFlags,
-  OpCode,
+  parsePacketFlags,
+  generatePacketFlags,
+  PacketOpCode,
   PacketType,
   RCode,
+  encodeUInt16BE,
 } from '@/dns';
 
-const FC_OPCODES = fc.constantFrom(OpCode.QUERY);
+const FC_OPCODES = fc.constantFrom(PacketOpCode.QUERY);
 const FC_RCODES = fc.constantFrom(RCode.NoError);
 
 describe('PacketFlags', () => {
   test('Flag Decode', () => {
-    const flags = 0b0000001000000000;
-    const decodedFlags = toPacketFlags(flags);
-    expect(decodedFlags).toEqual({
+    const flags = encodeUInt16BE(0b0000001000000000);
+    const decodedFlags = parsePacketFlags(flags);
+    expect(decodedFlags.data).toEqual({
       type: PacketType.QUERY,
-      opcode: OpCode.QUERY,
+      opcode: PacketOpCode.QUERY,
       rcode: RCode.NoError,
       authoritativeAnswer: false,
       truncation: true,
@@ -44,10 +45,10 @@ describe('PacketFlags', () => {
       }),
     ],
     (originalFlags) => {
-      const encodedFlags = fromPacketFlags(originalFlags);
-      const decodedFlags = toPacketFlags(encodedFlags);
+      const encodedFlags = generatePacketFlags(originalFlags);
+      const decodedFlags = parsePacketFlags(encodedFlags);
 
-      expect(decodedFlags).toEqual(originalFlags);
+      expect(decodedFlags.data).toEqual(originalFlags);
     },
   );
 });

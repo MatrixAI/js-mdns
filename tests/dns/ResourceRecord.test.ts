@@ -6,17 +6,41 @@ import {
   encodeUInt32BE,
   generateLabels,
   encodeUInt16BE,
-  fromIPv6,
-  toIPv6,
+  generateIPv6,
+  parseIPv6,
   concatUInt8Array,
   generateTXTRecordData,
   generateSRVRecordData,
+  generateResourceRecord,
+  StringRecord,
+  parseResourceRecord,
 } from '@/dns';
 
 const FC_UINT32 = fc.integer({ min: 0, max: 4294967295 }); // 32-Bit Unsigned Integer Limits
 const FC_UINT16 = fc.integer({ min: 0, max: 65535 }); // 16-Bit Unsigned Integer Limits
 
 describe('ResourceRecord', () => {
+  testProp(
+    'parse a record',
+    [
+      fc.record({
+        name: fc.domain(),
+        type: fc.constant(RType.A),
+        flush: fc.boolean(),
+        class: fc.constant(RClass.IN),
+        ttl: FC_UINT32, // 32-bit Signed Integer Limits
+        data: fc.ipV4(),
+      }),
+    ],
+    (originalRR) => {
+
+      const generatedRR = generateResourceRecord(originalRR as StringRecord);
+      const parsedRR = parseResourceRecord(generatedRR, generatedRR);
+
+      expect(parsedRR.data).toEqual(originalRR);
+      expect(parsedRR.remainder.length).toEqual(0);
+    },
+  );
   testProp(
     'parse a record',
     [
@@ -58,7 +82,7 @@ describe('ResourceRecord', () => {
         flush: fc.boolean(),
         class: fc.constant(RClass.IN),
         ttl: FC_UINT32,
-        data: fc.ipV6().chain((ip) => fc.constant(toIPv6(fromIPv6("0:0:0:0:0:0:0:0")))),
+        data: fc.ipV6().chain((ip) => fc.constant(parseIPv6(generateIPv6("0:0:0:0:0:0:0:0")).data)),
       }),
     ],
     (originalRR) => {
@@ -70,7 +94,7 @@ describe('ResourceRecord', () => {
         ),
         encodeUInt32BE(originalRR.ttl), // TTL: 60 seconds
         encodeUInt16BE(16), // Data length: 16 bytes
-        fromIPv6(originalRR.data),
+        generateIPv6(originalRR.data),
       );
       const decodedRR = parseResourceRecords(rawRR, rawRR, 1);
 

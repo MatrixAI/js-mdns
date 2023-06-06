@@ -1,4 +1,4 @@
-interface DecodedData<T> {
+interface Parsed<T> {
   data: T;
   remainder: Uint8Array;
 }
@@ -6,15 +6,25 @@ interface DecodedData<T> {
 type Packet = {
   id: number;
   flags: PacketFlags;
-  questions: Array<Question>;
+  questions: Array<QuestionRecord>;
   answers: ResourceRecord[];
-  additional: ResourceRecord[];
+  authorities: ResourceRecord[];
+  additionals: ResourceRecord[];
 };
+
+type PacketHeader =  {
+  id: number,
+  flags: PacketFlags,
+  qdcount: number; // question
+  ancount: number; // answer
+  nscount: number; // authority
+  arcount: number; // additional
+}
 
 type PacketFlags = {
   // Always Present
   type: PacketType;
-  opcode: OpCode;
+  opcode: PacketOpCode;
   rcode: RCode;
 
   authoritativeAnswer?: boolean;
@@ -33,7 +43,7 @@ const enum PacketType {
   RESPONSE = 1, // 16th bit set
 }
 
-const enum OpCode { // RFC 6895 2.2.
+const enum PacketOpCode { // RFC 6895 2.2.
   QUERY = 0,
   // Incomplete list
 }
@@ -43,10 +53,11 @@ const enum RCode { // RFC 6895 2.3.
   // Incomplete list
 }
 
-type Question = {
+type QuestionRecord = {
   name: string;
   type: QType;
   class: QClass;
+  unicast: boolean;
 };
 
 const enum QClass { // RFC 1035 3.2.4. 3.2.5.
@@ -70,7 +81,7 @@ type ResourceRecord =
   | StringRecord
   | TXTRecord
   | SRVRecord
-  | OptRecord
+  | OPTRecord
   | NSECRecord;
 
 const enum RType { // RFC 1035 3.2.2.
@@ -90,7 +101,7 @@ const enum RClass { // RFC 1035 3.2.4.
   // incomplete list
 }
 
-type BaseRecord<T, D> = {
+type BaseResourceRecord<T, D> = {
   name: string;
   type: T;
   class: RClass;
@@ -101,19 +112,21 @@ type BaseRecord<T, D> = {
   data: D;
 };
 
-type StringRecord = BaseRecord<
+type StringRecord = BaseResourceRecord<
   (RType.A | RType.AAAA | RType.CNAME | RType.PTR),
   string
 >;
 
-type TXTRecord = BaseRecord<RType.TXT, Record<string, string>>;
+type TXTRecord = BaseResourceRecord<RType.TXT, Record<string, string>>;
 
-type SRVRecord = BaseRecord<
+type TXTRecordValue = Record<string, string>;
+
+type SRVRecord = BaseResourceRecord<
   RType.SRV,
-  SRVRecordData
+  SRVRecordValue
 >;
 
-type SRVRecordData = {
+type SRVRecordValue = {
   port: number;
   target: string;
   priority: number;
@@ -121,7 +134,7 @@ type SRVRecordData = {
 }
 
 // This will have to be fleshed out later
-type OptRecord = {
+type OPTRecord = {
   type: RType.OPT;
   name: '0';
 
@@ -132,7 +145,7 @@ type OptRecord = {
   data: any[]; // RFC 6891 6.1.2. This makes up the RDATA field. Each option consists of an option-code, length of option-data in octets, and option-data.
 };
 
-type NSECRecord = BaseRecord<
+type NSECRecord = BaseResourceRecord<
   RType.NSEC,
   {
     nextDomainName: string;
@@ -145,17 +158,27 @@ type NSECRecord = BaseRecord<
 >;
 
 export type {
-  DecodedData,
+  Parsed,
   Packet,
+  PacketHeader,
   PacketFlags,
-  Question,
+  QuestionRecord,
   ResourceRecord,
-  BaseRecord,
+  BaseResourceRecord,
   StringRecord,
   TXTRecord,
+  TXTRecordValue,
   SRVRecord,
-  SRVRecordData,
-  OptRecord,
+  SRVRecordValue,
+  OPTRecord,
   NSECRecord,
 };
-export { PacketType, OpCode, RCode, QClass, QType, RType, RClass };
+export {
+  PacketOpCode,
+  PacketType,
+  RCode,
+  RType,
+  RClass,
+  QClass,
+  QType
+};

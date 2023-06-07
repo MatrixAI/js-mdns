@@ -1,9 +1,15 @@
 import { AbstractError } from '@matrixai/errors';
 
-class ErrorDNSParse<T> extends AbstractError<T> {
-  static description = "";
+class ErrorDNS<T> extends AbstractError<T> {
+  static description = 'DNS Packet error';
 }
 
-export {
-  ErrorDNSParse,
+class ErrorDNSParse<T> extends ErrorDNS<T> {
+  static description = 'DNS Packet parse error';
 }
+
+class ErrorDNSGenerate<T> extends ErrorDNS<T> {
+  static description = 'DNS Packet generation error';
+}
+
+export { ErrorDNS, ErrorDNSParse, ErrorDNSGenerate };

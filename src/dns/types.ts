@@ -12,14 +12,14 @@ type Packet = {
   additionals: ResourceRecord[];
 };
 
-type PacketHeader =  {
-  id: number,
-  flags: PacketFlags,
-  qdcount: number; // question
-  ancount: number; // answer
-  nscount: number; // authority
-  arcount: number; // additional
-}
+type PacketHeader = {
+  id: number;
+  flags: PacketFlags;
+  qdcount: number; // Question
+  ancount: number; // Answer
+  nscount: number; // Authority
+  arcount: number; // Additional
+};
 
 type PacketFlags = {
   // Always Present
@@ -113,7 +113,7 @@ type BaseResourceRecord<T, D> = {
 };
 
 type StringRecord = BaseResourceRecord<
-  (RType.A | RType.AAAA | RType.CNAME | RType.PTR),
+  RType.A | RType.AAAA | RType.CNAME | RType.PTR,
   string
 >;
 
@@ -121,17 +121,14 @@ type TXTRecord = BaseResourceRecord<RType.TXT, Record<string, string>>;
 
 type TXTRecordValue = Record<string, string>;
 
-type SRVRecord = BaseResourceRecord<
-  RType.SRV,
-  SRVRecordValue
->;
+type SRVRecord = BaseResourceRecord<RType.SRV, SRVRecordValue>;
 
 type SRVRecordValue = {
   port: number;
   target: string;
   priority: number;
   weight: number;
-}
+};
 
 // This will have to be fleshed out later
 type OPTRecord = {
@@ -173,12 +170,4 @@ export type {
   OPTRecord,
   NSECRecord,
 };
-export {
-  PacketOpCode,
-  PacketType,
-  RCode,
-  RType,
-  RClass,
-  QClass,
-  QType
-};
+export { PacketOpCode, PacketType, RCode, RType, RClass, QClass, QType };

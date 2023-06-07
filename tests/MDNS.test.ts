@@ -1,5 +1,6 @@
 import MDNS from '@/MDNS';
 import Responder from '@/Responder';
+import { Host } from '@/types';
 import { testUtility } from './utils';
 
 describe('Responder', () => {
@@ -17,6 +18,6 @@ describe('Responder', () => {
   });
 
   test('some arbitrary test', async () => {
-    await mdns?.start();
+    await mdns?.start({});
   });
 });

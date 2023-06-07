@@ -15,6 +15,7 @@ import type {
 import { RType } from './types';
 
 import * as errors from './errors';
+import { IPv6 } from 'ip-num';
 
 // Packet Flag Masks
 const AUTHORITATIVE_ANSWER_MASK = 0x400;
@@ -113,6 +114,35 @@ function parseLabels(
   return { data: label.slice(0, -1), remainder: input.subarray(readBytes) };
 }
 
+// implement loop detection by keeping track of ranges.
+// We can even use a TreeMap to map ranges to strings, and reference them instead of pointers.
+// This would also allow us to get rid of the sort at the start of hasTraversed by implementing a red-black tree.
+// For now, this is the simplest solution.
+function hasTraversed(
+  pointer: number,
+  intervals: Array<[number, number]>,
+): boolean {
+  // O(nlogn) sort
+  const sortedIntervals = intervals.sort((a, b) => a[0] - b[0]);
+
+  // O(logn) binary search
+  let low = 0;
+  let high = sortedIntervals.length - 1;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    const currentRange = sortedIntervals[mid];
+    if (pointer >= currentRange[0] && pointer <= currentRange[1]) {
+      return true;
+    } else if (pointer < currentRange[0]) {
+      high = mid - 1;
+    } else {
+      low = mid + 1;
+    }
+  }
+
+  return false; // Number does not exist in any range
+}
+
 // Revisit this later...
 function generateLabels(input: string, terminator: number[] = [0]): Uint8Array {
   const labels = input.split('.');
@@ -146,20 +176,14 @@ function generateLabels(input: string, terminator: number[] = [0]): Uint8Array {
 }
 
 function parseIPv6(input: Uint8Array): Parsed<string> {
-  if (input.length < 16) {
-    throw new errors.ErrorDNSParse('IPv6 address is too short');
-  }
+  if (input.length < 16) throw new errors.ErrorDNSParse('Invalid IPv6 address');
 
   const dv = new DataView(input.buffer, input.byteOffset);
   const parts: string[] = [];
 
-  try {
-    for (let i = 0; i < 16; i += 2) {
-      const value = dv.getUint16(i, false).toString(16);
-      parts.push(value);
-    }
-  } catch (err) {
-    throw new errors.ErrorDNSParse('Invalid IPv6 address');
+  for (let i = 0; i < 16; i += 2) {
+    const value = dv.getUint16(i, false).toString(16);
+    parts.push(value);
   }
 
   return {
@@ -169,17 +193,17 @@ function parseIPv6(input: Uint8Array): Parsed<string> {
 }
 
 function generateIPv6(ip: string): Uint8Array {
-  const parts = ip.split(':');
-
   const buffer = new Uint8Array(16);
-
-  let offset = 0;
-  for (const part of parts) {
-    const hexPart = parseInt(part, 16);
-
-    const encoded = encodeUInt16BE(hexPart);
-    buffer.set(encoded, offset);
-    offset += 2;
+  const dv = new DataView(buffer.buffer);
+  try {
+    const ipv6 = new IPv6(ip);
+    const parts = ipv6.getHexadecatet();
+    for (let i = 0; i < 8; i ++) {
+      dv.setUint16(i * 2, parts[i].getValue(), false);
+    }
+  }
+  catch (err) {
+    throw new errors.ErrorDNSGenerate('Invalid IPv6 address');
   }
 
   return buffer;

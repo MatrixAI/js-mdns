@@ -1,7 +1,7 @@
-import { Callback, Host, Hostname, PromiseDeconstructed } from "./types";
+import { Callback, Host, Hostname, PromiseDeconstructed, Service } from "./types";
 import { IPv4, IPv6, Validator } from 'ip-num';
 import dns from "dns";
-import { StringRecord, RType, RClass } from "@/dns";
+import { StringRecord, RType, RClass, SRVRecord, ResourceRecord, TXTRecord } from "@/dns";
 
 /**
  * Is it an IPv4 address?
@@ -292,6 +292,52 @@ function toHostResourceRecords(hosts: Host[], options: Partial<StringRecord> & {
   }));
 }
 
+function toServiceResourceRecords(services: Service[], hostname: Hostname, flush?: boolean, ttl?: number): ResourceRecord[] {
+  return services.flatMap(service => {
+    const serviceDomain = `_${service.type}._${service.protocol}.local`;
+    const fdqn = `${service.name}.${serviceDomain}`;
+    return [
+      {
+        name: fdqn,
+        type: RType.SRV,
+        class: RClass.IN,
+        ttl: ttl ?? 120, // Default SRVRecord ttl is 120 seconds
+        flush: flush ?? false,
+        data: {
+          priority: 0,
+          weight: 0,
+          port: service.port,
+          target: hostname,
+        }
+      },
+      {
+        name: fdqn,
+        type: RType.TXT,
+        class: RClass.IN,
+        ttl: ttl ?? 120, // Default TXTRecord ttl is 120 seconds
+        flush: flush ?? false,
+        data: service.txt ?? {}
+      },
+      {
+        name: serviceDomain,
+        type: RType.PTR,
+        class: RClass.IN,
+        ttl: ttl ?? 120, // Default TXTRecord ttl is 120 seconds
+        flush: flush ?? false,
+        data: fdqn,
+      },
+      {
+        name: "_services._dns-sd._udp.local",
+        type: RType.PTR,
+        class: RClass.IN,
+        ttl: ttl ?? 120, // Default TXTRecord ttl is 120 seconds
+        flush: flush ?? false,
+        data: serviceDomain,
+      }
+    ]
+  });
+}
+
 export {
   isIPv4,
   isIPv6,
@@ -310,5 +356,6 @@ export {
   buildAddress,
   resolvesZeroIP,
   isHostWildcard,
-  toHostResourceRecords
+  toHostResourceRecords,
+  toServiceResourceRecords
 };

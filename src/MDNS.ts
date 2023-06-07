@@ -19,15 +19,17 @@ interface MDNS extends CreateDestroyStartStop {}
   new errors.ErrorMDNSDestroyed()
 )
 class MDNS extends EventTarget {
-  protected hostname: string;
   protected services: Service[] = [];
+  protected externalServices: Service[] = [];
   protected boundHosts: Host[] = [];
+  protected queryTimers: Timer[] = [];
 
   protected socket: dgram.Socket;
   protected _host: Host;
   protected _port: Port;
   protected _type: 'ipv4' | 'ipv6' | 'ipv4&ipv6';
   protected _group: Host[];
+  protected _hostname: Hostname;
 
   protected resolveHostname: (hostname: Hostname) => Host | PromiseLike<Host>;
 
@@ -59,12 +61,14 @@ class MDNS extends EventTarget {
     port = 5353 as Port,
     ipv6Only = false,
     group = ['224.0.0.251', 'ff02::fb'] as Host[],
+    hostname = "abc.local" as Hostname,
     reuseAddr = true,
   }: {
     host?: Host | Hostname;
     port?: Port;
     ipv6Only?: boolean;
     group?: Host[];
+    hostname?: Hostname;
     reuseAddr?: boolean;
   }): Promise<void> {
     let address = utils.buildAddress(host, port);
@@ -119,28 +123,30 @@ class MDNS extends EventTarget {
       this._type = 'ipv6';
     }
     this._group = group;
+    this._hostname = hostname;
 
     this.socket.setTTL(MDNS_TTL);
     this.socket.setMulticastTTL(MDNS_TTL);
     this.socket.setMulticastLoopback(true);
+    const ifaces = Object.values(os.networkInterfaces()).flatMap((iface) => typeof iface === 'undefined' ? [] : iface);
     if (utils.isHostWildcard(this._host)) {
-      const ifaces = Object.values(os.networkInterfaces()).flatMap(iface => typeof iface !== "undefined" ? iface : []);
-      for (const ip of ifaces) {
-        if (this._type === "ipv4" && ip.family !== "IPv4") continue;
-        if (this._type === "ipv6" && ip.family !== "IPv6") continue;
-        this.registerHost(ip.address as Host);
+      for (const iface of ifaces) {
+        if (this._type === 'ipv4' && iface.family !== "IPv4") continue;
+        if (this._type === 'ipv6' && iface.family !== "IPv6") continue;
+        this.registerHost(iface.address as Host);
       }
     }
     else {
       this.registerHost(this._host);
     }
-    this.socket.addListener('message', this.handleSocketMessage);
-    this.socket.addListener('error', this.handleSocketError);
+
+    this.socket.on('message', (...p) => this.handleSocketMessage(...p));
+    this.socket.on('error', (...p) => this.handleSocketError(...p));
     address = utils.buildAddress(this._host, this._port);
     console.log(`Started ${this.constructor.name} on ${address}`);
 
-    const hostRecords: StringRecord[] = this.getBoundHostRecords({flush: true});
-    const packet = generatePacket({
+    const hostRecords: StringRecord[] = utils.toHostResourceRecords(this.boundHosts, { name: this._hostname });
+    const packet: Packet = {
       id: 0,
       flags: {
         opcode: PacketOpCode.QUERY,
@@ -151,43 +157,51 @@ class MDNS extends EventTarget {
       answers: hostRecords,
       additionals: [],
       authorities: []
-    });
+    };
     this.advertise(packet);
   }
 
   private registerHost(host: Host) {
     for (const group of this._group) {
-      if (utils.isIPv6(host) && utils.isIPv6(group)) {
-        this.socket.addMembership(group, host);
-        console.log(group, host)
+      try {
+        if (utils.isIPv6(host) && utils.isIPv6(group)) {
+          this.socket.addMembership(group);
+        }
+        else if (utils.isIPv4(host) && utils.isIPv4(group)) {
+          this.socket.addMembership(group);
+        }
       }
-      else if (utils.isIPv4(host) && utils.isIPv4(group)) {
-        this.socket.addMembership(group, host);
-        console.log(group, host)
+      catch (err) {
       }
-
     }
     this.boundHosts.push(host);
   }
 
-  private advertise(packet) {
-    const advertisement = async () => {
-      for (const group of this._group) {
-        await this.socketSend(packet, this._port, group);
-      }
-    }
+  private advertise(packet: Packet) {
+    const advertisement = () => this.sendPacket(packet);
     advertisement().then(async () => {
       await new Timer(advertisement, 1000);
     })
   }
 
+  private async sendPacket(packet: Packet) {
+    const message = generatePacket(packet);
+    for (const group of this._group) {
+      let g = group;
+      if (this._type === "ipv4" && !utils.isIPv4(g)) continue;
+      if (this._type === "ipv6" && !utils.isIPv6(g)) continue;
+      if (this._type === "ipv4&ipv6" && utils.isIPv4(g)) g = utils.toIPv4MappedIPv6Dec(group);
+      await this.socketSend(message, this._port, g);
+    }
+  }
+
   private async handleSocketMessage(msg: Buffer, rinfo: dgram.RemoteInfo) {
     const packet = parsePacket(msg);
     if (packet.flags.type === PacketType.QUERY) {
-      this.handleSocketMessageQuery(packet, rinfo);
+      await this.handleSocketMessageQuery(packet, rinfo);
     }
     else {
-      this.handleSocketMessageResponse(packet, rinfo);
+      await this.handleSocketMessageResponse(packet, rinfo);
     }
   }
 
@@ -196,21 +210,23 @@ class MDNS extends EventTarget {
     rinfo: dgram.RemoteInfo,
   ): Promise<void> {
     if (packet.flags.type !== PacketType.QUERY) return;
-    console.log(packet);
-    const answerRecords: ResourceRecord[] = [];
+    const answerResourceRecords: ResourceRecord[] = [];
 
-    const hostRecords = this.getBoundHostRecords({});
+    const hostResourceRecords = utils.toHostResourceRecords(this.boundHosts, {name: this._hostname});
+    const toServiceResourceRecords = utils.toServiceResourceRecords(this.services, this._hostname);
+    const allResourceRecords = toServiceResourceRecords.concat(hostResourceRecords);
     for (const question of packet.questions) {
-      const foundRecord = hostRecords.find(record =>
+      const foundRecord = allResourceRecords.find(record =>
         record.name === question.name
         && (record.type as number === question.type || question.type === QType.ANY)
-        && (record.class as number === question.class || question.class === QClass.ANY)
+        && ((record as any).class as number === question.class || question.class === QClass.ANY)
       );
-      if (foundRecord) answerRecords.push(foundRecord);
+      if (foundRecord) answerResourceRecords.push(foundRecord);
     }
-    if (answerRecords.length === 0) return;
 
-    const responsePacket = generatePacket({
+    if (answerResourceRecords.length === 0) return;
+
+    const responsePacket: Packet = {
       id: 0,
       flags: {
         opcode: PacketOpCode.QUERY,
@@ -218,13 +234,12 @@ class MDNS extends EventTarget {
         type: PacketType.RESPONSE,
       },
       questions: [],
-      answers: answerRecords,
+      answers: answerResourceRecords,
       additionals: [],
       authorities: []
-    });
+    };
     if (this.socket) {
-      const p = utils.promisify(this.socket.send).bind(this.socket, responsePacket, this._port, utils.toIPv4MappedIPv6Dec(this._group[0]));
-      await p();
+      await this.sendPacket(responsePacket);
     }
   }
 
@@ -232,23 +247,11 @@ class MDNS extends EventTarget {
     packet: Packet,
     rinfo: dgram.RemoteInfo
   ) {
-
+    packet.answers.forEach((answer) => {});
   }
 
-  private async handleSocketError() {
+  private async handleSocketError(err: any) {
 
-  }
-
-  private getBoundHostRecords(options: Partial<StringRecord>) {
-    const hostRecords: StringRecord[] = this.boundHosts.map(host => ({
-      name: options.name ?? this.hostname,
-      type: utils.isIPv4(host) ? RType.A : RType.AAAA,
-      class: RClass.IN,
-      ttl: options.ttl ?? HOSTNAME_RR_TTL,
-      data: options.data ?? host,
-      flush: options.flush ?? false
-    }));
-    return hostRecords;
   }
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
@@ -263,16 +266,65 @@ class MDNS extends EventTarget {
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
   async registerService(service: Service): Promise<void> {
     this.services.push(service);
+    const advertisePacket: Packet = {
+      id: 0,
+      flags: {
+        opcode: PacketOpCode.QUERY,
+        rcode: RCode.NoError,
+        type: PacketType.RESPONSE,
+      },
+      questions: [],
+      answers: utils.toServiceResourceRecords([service], this._hostname, true),
+      additionals: [],
+      authorities: []
+    };
+    this.advertise(advertisePacket);
   }
 
   async unregisterService(
     name: string,
     type: string,
     protocol: 'udp' | 'tcp',
-  ): Promise<void> {}
+  ): Promise<void> {
+    const serviceIndex = this.services.findIndex(s => s.name === name && s.type === type && s.protocol === protocol);
+    if (serviceIndex === -1) throw new Error('Service not found'); // make this an mdns error later
+    const removedServices = this.services.splice(serviceIndex, 1);
+    const advertisePacket: Packet = {
+      id: 0,
+      flags: {
+        opcode: PacketOpCode.QUERY,
+        rcode: RCode.NoError,
+        type: PacketType.RESPONSE,
+      },
+      questions: [],
+      answers: utils.toServiceResourceRecords(removedServices, this._hostname, true, 0),
+      additionals: [],
+      authorities: []
+    };
+    this.advertise(advertisePacket);
+  }
 
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
-  queryServices: (type: string, protocol: 'udp' | 'tcp') => Promise<void>;
+  query(type: string, protocol: 'udp' | 'tcp') {
+    const queryPacket: Packet = {
+      id: 0,
+      flags: {
+        opcode: PacketOpCode.QUERY,
+        rcode: RCode.NoError,
+        type: PacketType.QUERY,
+      },
+      questions: [{
+        name: type,
+        type: QType.PTR,
+        class: QClass.IN,
+        unicast: false
+      }],
+      answers: [],
+      additionals: [],
+      authorities: []
+    };
+    this.sendPacket(queryPacket).then(() => {});
+  };
 }
 
 export default MDNS;

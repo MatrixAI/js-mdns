@@ -82,6 +82,8 @@ function parseLabels(
   let foundInitialPointer = false;
   let currentBuffer = input;
 
+  const traversedPointers: Array<number> = [];
+
   while (
     currentBuffer[currentIndex] !== 0 &&
     currentIndex < currentBuffer.length
@@ -90,9 +92,15 @@ function parseLabels(
       const dv = new DataView(currentBuffer.buffer, currentBuffer.byteOffset);
       const pointerOffset = dv.getUint16(currentIndex, false) & 0x3fff;
 
-      foundInitialPointer = true; // The initial, or outermost pointer has been found
-      currentBuffer = original; // Set the currentBuffer to the original buffer to get the full scope of the packet
+      if (traversedPointers.includes(pointerOffset)) throw new errors.ErrorDNSParse('Name compression pointer causes recursion');
+      traversedPointers.push(pointerOffset);
+
       currentIndex = pointerOffset; // Set the currentIndex to the offset of the pointer in relation to the original buffer that is passed in
+
+      if (!foundInitialPointer) {
+        foundInitialPointer = true; // The initial, or outermost pointer has been found
+        currentBuffer = original; // Set the currentBuffer to the original buffer to get the full scope of the packet
+      }
     } else {
       const labelLength = currentBuffer[currentIndex++];
       label += new TextDecoder().decode(
@@ -112,35 +120,6 @@ function parseLabels(
   }
 
   return { data: label.slice(0, -1), remainder: input.subarray(readBytes) };
-}
-
-// implement loop detection by keeping track of ranges.
-// We can even use a TreeMap to map ranges to strings, and reference them instead of pointers.
-// This would also allow us to get rid of the sort at the start of hasTraversed by implementing a red-black tree.
-// For now, this is the simplest solution.
-function hasTraversed(
-  pointer: number,
-  intervals: Array<[number, number]>,
-): boolean {
-  // O(nlogn) sort
-  const sortedIntervals = intervals.sort((a, b) => a[0] - b[0]);
-
-  // O(logn) binary search
-  let low = 0;
-  let high = sortedIntervals.length - 1;
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2);
-    const currentRange = sortedIntervals[mid];
-    if (pointer >= currentRange[0] && pointer <= currentRange[1]) {
-      return true;
-    } else if (pointer < currentRange[0]) {
-      high = mid - 1;
-    } else {
-      low = mid + 1;
-    }
-  }
-
-  return false; // Number does not exist in any range
 }
 
 // Revisit this later...
@@ -528,7 +507,7 @@ function parseTXTRecordData(
 
   while (inputBuffer.length !== 0) {
     const textLength = inputBuffer[0];
-    const decodedPair = new TextDecoder().decode(
+    const decodedPair = new TextDecoder("utf-8", { fatal: false }).decode(
       inputBuffer.subarray(1, textLength + 1),
     );
 

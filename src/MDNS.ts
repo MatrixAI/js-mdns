@@ -304,12 +304,23 @@ class MDNS extends EventTarget {
     }
 
     for (const dirtiedService of dirtiedServiceFdqns) {
-      const newServices = utils.fromServiceResourceRecords(this.externalResourceRecordCache[dirtiedService].map(wrapper => wrapper.record));
-      if (newServices.length !== 0) {
-        for (const service of newServices) {
-          this.dispatchEvent(new MDNSServiceEvent({ detail: service }));
-        }
-      }
+      const wrappedService = utils.fromServiceResourceRecords(this.externalResourceRecordCache[dirtiedService].map(wrapper => wrapper.record));
+      const queryPacket: Packet = {
+        id: 0,
+        flags: {
+          opcode: PacketOpCode.QUERY,
+          rcode: RCode.NoError,
+          type: PacketType.QUERY,
+        },
+        questions: wrappedService.remainderQuestionRecords,
+        answers: [],
+        additionals: [],
+        authorities: []
+      };
+      await this.sendPacket(queryPacket);
+      if (typeof wrappedService.service !== "undefined") {
+        this.dispatchEvent(new MDNSServiceEvent({ detail: wrappedService.service }));
+      };
     }
 
     if (packet.questions.length !== 0) {

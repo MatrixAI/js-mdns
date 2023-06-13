@@ -1,7 +1,7 @@
 import { Callback, Host, Hostname, PromiseDeconstructed, Service } from "./types";
 import { IPv4, IPv6, Validator } from 'ip-num';
 import dns from "dns";
-import { StringRecord, RType, RClass, SRVRecord, ResourceRecord, TXTRecord, QuestionRecord } from "@/dns";
+import { StringRecord, RType, RClass, SRVRecord, ResourceRecord, TXTRecord, QuestionRecord, QClass, QType } from "@/dns";
 
 /**
  * Is it an IPv4 address?
@@ -350,39 +350,60 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
   });
 }
 
-function fromServiceResourceRecords(records: ResourceRecord[]): Service[] {
-  const services: Record<string, Partial<Service>> = {};
+function fromServiceResourceRecords(records: ResourceRecord[], unicast: boolean = false): { service?: Service, remainderQuestionRecords: QuestionRecord[] } {
+  const service: Partial<Service> = {};
+  const remainderResourceRecordTypes = [RType.PTR, RType.SRV, RType.TXT, RType.A, RType.AAAA];
   for (const record of records.sort((a, b) => b.type - a.type)) {
-    if (typeof services[record.name] === "undefined") services[record.name] = {};
-    const splitName = record.name.split('.');
     if (record.type ===  RType.TXT) {
-      services[record.name].txt = record.data;
+      service.txt = record.data;
     }
     else if (record.type === RType.SRV) {
-      services[record.name].port = record.data.port;
-      services[record.name].hostname = record.data.target as Hostname;
+      service.port = record.data.port;
+      service.hostname = record.data.target as Hostname;
     }
     else if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local") {
-      if (typeof services[record.data] === "undefined") services[record.data] = {};
-      services[record.data].name = record.data.split('.')[0];
-      services[record.data].type = splitName[0].slice(1);
-      services[record.data].protocol = splitName[1].slice(1) as any;
+      console.log(record)
+      const splitName = record.name.split('.');
+      service.name = record.data.split('.')[0];
+      service.type = splitName[0].slice(1);
+      service.protocol = splitName[1].slice(1) as any;
     }
     else if (record.type === RType.A) {
-      const serviceIndex = Object.values(services).find(service => service.hostname === record.name);
-      if (typeof serviceIndex !== "undefined") {
-        serviceIndex.ipv4 = record.data as Host;
-      }
+      service.ipv4 = record.data as Host
     }
     else if (record.type === RType.AAAA) {
-      const serviceIndex = Object.values(services).find(service => service.hostname === record.name);
-      if (typeof serviceIndex !== "undefined") {
-        serviceIndex.ipv6 = record.data as Host;
-      }
+      service.ipv6 = record.data as Host;
+    }
+    if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local") {
+      remainderResourceRecordTypes.splice(remainderResourceRecordTypes.indexOf(record.type), 1);
     }
   }
 
-  return Object.values(services).filter(isService);
+  return {
+    service: isService(service) ? service : undefined,
+    remainderQuestionRecords: remainderResourceRecordTypes.flatMap(qtype => {
+      let name: string | undefined;
+      if (qtype === RType.A || qtype === RType.AAAA) name = service?.hostname;
+      else if (
+        (qtype === RType.SRV || qtype === RType.TXT) &&
+        service.name &&
+        service.type &&
+        service.protocol
+      ) name = `${service.name}._${service?.type}._${service?.protocol}.local`;
+      else if (
+        qtype === RType.PTR &&
+        service.type &&
+        service.protocol
+      ) name = `_${service.type}._${service.protocol}.local`;
+      if (typeof name === "undefined") return [];
+      return {
+        name,
+        type: qtype as number as QType,
+        class: QClass.IN,
+        unicast
+      }
+    })
+  };
 }
 
 function toRecordKey(record: ResourceRecord | QuestionRecord): string {

@@ -253,8 +253,8 @@ class MDNS extends EventTarget {
         // RFC 6763 12.1. Additionals in PTR
         if (question.type === QType.PTR) {
           additionalResourceRecordCache = this.resourceRecordCache.filter(record => (
-            (record.type === RType.SRV && record.name === foundRecord?.data) ||
-            (record.type === RType.TXT && record.name === foundRecord?.data) ||
+            (record.type === RType.SRV && record.name === foundRecord.data) ||
+            (record.type === RType.TXT && record.name === foundRecord.data) ||
             record.type === RType.A || record.type === RType.AAAA
           ));
         }

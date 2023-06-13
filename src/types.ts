@@ -28,18 +28,18 @@ type PromiseDeconstructed<T> = {
 type Host = Opaque<'Host', string>;
 
 /**
-  * Hostnames are resolved to IP addresses
-  */
+ * Hostnames are resolved to IP addresses
+ */
 type Hostname = Opaque<'Hostname', string>;
 
 /**
-  * Ports are numbers from 0 to 65535
-  */
+ * Ports are numbers from 0 to 65535
+ */
 type Port = Opaque<'Port', number>;
 
 /**
-  * Combination of `<HOST>:<PORT>`
-  */
+ * Combination of `<HOST>:<PORT>`
+ */
 type Address = Opaque<'Address', string>;
 
 type ServiceConstructor = {
@@ -48,7 +48,7 @@ type ServiceConstructor = {
   protocol: 'udp' | 'tcp';
   port: number;
   txt?: Record<string, string>;
-}
+};
 
 type Service = {
   hostname: Hostname;
@@ -56,7 +56,7 @@ type Service = {
   ipv6?: Host;
 } & ServiceConstructor;
 
-export {
+export type {
   Callback,
   PromiseDeconstructed,
   Host,
@@ -64,5 +64,5 @@ export {
   Port,
   Address,
   ServiceConstructor,
-  Service
-}
+  Service,
+};

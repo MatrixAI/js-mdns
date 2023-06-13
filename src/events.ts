@@ -1,4 +1,4 @@
-import { Service } from "./types";
+import type { Service } from './types';
 
 class MDNSServiceEvent extends Event {
   public detail: Service;
@@ -12,6 +12,4 @@ class MDNSServiceEvent extends Event {
   }
 }
 
-export {
-  MDNSServiceEvent
-}
+export { MDNSServiceEvent };

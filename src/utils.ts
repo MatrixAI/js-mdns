@@ -1,12 +1,24 @@
-import { Callback, Host, Hostname, PromiseDeconstructed, Service } from "./types";
+import type {
+  Callback,
+  Host,
+  Hostname,
+  PromiseDeconstructed,
+  Service,
+} from './types';
+import type {
+  StringRecord,
+  ResourceRecord,
+  QuestionRecord,
+  QType,
+} from '@/dns';
+import dns from 'dns';
 import { IPv4, IPv6, Validator } from 'ip-num';
-import dns from "dns";
-import { StringRecord, RType, RClass, SRVRecord, ResourceRecord, TXTRecord, QuestionRecord, QClass, QType } from "@/dns";
+import { RType, RClass, SRVRecord, TXTRecord, QClass } from '@/dns';
 
 /**
  * Is it an IPv4 address?
  */
- function isIPv4(host: string): host is Host {
+function isIPv4(host: string): host is Host {
   const [isIPv4] = Validator.isValidIPv4String(host);
   return isIPv4;
 }
@@ -282,30 +294,40 @@ function resolvesZeroIP(host: Host): Host {
 }
 
 // Default ResourceRecord ttl is 120 seconds
-function toHostResourceRecords(hosts: Host[], hostname: Hostname, flush: boolean = false, ttl: number = 120): StringRecord[] {
-  return hosts.map(host => ({
+function toHostResourceRecords(
+  hosts: Host[],
+  hostname: Hostname,
+  flush: boolean = false,
+  ttl: number = 120,
+): StringRecord[] {
+  return hosts.map((host) => ({
     name: hostname,
     type: isIPv4(host) ? RType.A : RType.AAAA,
     class: RClass.IN,
     ttl, // Default StringRecord ttl is 120 seconds
     data: host,
-    flush
+    flush,
   }));
 }
 
 function isService(service: any): service is Service {
   return (
-    typeof service.hostname === "string" &&
-    typeof service.name === "string" &&
-    typeof service.type === "string" &&
-    typeof service.protocol === "string" &&
-    typeof service.port === "number"
-  )
+    typeof service.hostname === 'string' &&
+    typeof service.name === 'string' &&
+    typeof service.type === 'string' &&
+    typeof service.protocol === 'string' &&
+    typeof service.port === 'number'
+  );
 }
 
 // Default ResourceRecord ttl is 120 seconds
-function toServiceResourceRecords(services: Service[], hostname: Hostname, flush: boolean = false, ttl: number = 120): ResourceRecord[] {
-  return services.flatMap(service => {
+function toServiceResourceRecords(
+  services: Service[],
+  hostname: Hostname,
+  flush: boolean = false,
+  ttl: number = 120,
+): ResourceRecord[] {
+  return services.flatMap((service) => {
     const serviceDomain = `_${service.type}._${service.protocol}.local`;
     const fdqn = `${service.name}.${serviceDomain}`;
     return [
@@ -320,7 +342,7 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
           weight: 0,
           port: service.port,
           target: hostname,
-        }
+        },
       },
       {
         name: fdqn,
@@ -328,7 +350,7 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
         class: RClass.IN,
         ttl: ttl,
         flush: flush,
-        data: service.txt ?? {}
+        data: service.txt ?? {},
       },
       {
         name: serviceDomain,
@@ -339,74 +361,90 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
         data: fdqn,
       },
       {
-        name: "_services._dns-sd._udp.local",
+        name: '_services._dns-sd._udp.local',
         type: RType.PTR,
         class: RClass.IN,
         ttl: ttl,
         flush: flush,
         data: serviceDomain,
-      }
-    ]
+      },
+    ];
   });
 }
 
-function fromServiceResourceRecords(records: ResourceRecord[], unicast: boolean = false): { service?: Service, remainderQuestionRecords: QuestionRecord[] } {
+function fromServiceResourceRecords(
+  records: ResourceRecord[],
+  unicast: boolean = false,
+): { service?: Service; remainderQuestionRecords: QuestionRecord[] } {
   const service: Partial<Service> = {};
 
   // Initialise as all required record types for a service, so that we can check if any are missing and return questions if needed.
-  const remainderResourceRecordTypes = [RType.PTR, RType.SRV, RType.TXT, RType.A, RType.AAAA];
+  const remainderResourceRecordTypes = [
+    RType.PTR,
+    RType.SRV,
+    RType.TXT,
+    RType.A,
+    RType.AAAA,
+  ];
 
   // Sort by type descending so that SRV records are processed BEFORE A/AAAA records
   for (const record of records.sort((a, b) => b.type - a.type)) {
-    if (record.type ===  RType.TXT) {
+    if (record.type === RType.TXT) {
       service.txt = record.data;
-    }
-    else if (record.type === RType.SRV) {
+    } else if (record.type === RType.SRV) {
       service.port = record.data.port;
       service.hostname = record.data.target as Hostname;
-    }
-    else if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local") {
+    } else if (
+      record.type === RType.PTR &&
+      record.name !== '_services._dns-sd._udp.local'
+    ) {
       const splitName = record.name.split('.');
       service.name = record.data.split('.').at(0);
       service.type = splitName.at(0)?.slice(1);
       service.protocol = splitName.at(1)?.slice(1) as any;
-    }
-    else if (record.type === RType.A) {
-      service.ipv4 = record.data as Host
-    }
-    else if (record.type === RType.AAAA) {
+    } else if (record.type === RType.A) {
+      service.ipv4 = record.data as Host;
+    } else if (record.type === RType.AAAA) {
       service.ipv6 = record.data as Host;
     }
     // Remove the record type from the remainder list if it's been processed, ignore PTR records for _services._dns-sd._udp.local
-    if (!(record.type === RType.PTR && record.name === "_services._dns-sd._udp.local")) {
-      remainderResourceRecordTypes.splice(remainderResourceRecordTypes.indexOf(record.type), 1);
+    if (
+      !(
+        record.type === RType.PTR &&
+        record.name === '_services._dns-sd._udp.local'
+      )
+    ) {
+      remainderResourceRecordTypes.splice(
+        remainderResourceRecordTypes.indexOf(record.type),
+        1,
+      );
     }
   }
 
   return {
     service: isService(service) ? service : undefined,
-    remainderQuestionRecords: remainderResourceRecordTypes.flatMap(qtype => {
+    remainderQuestionRecords: remainderResourceRecordTypes.flatMap((qtype) => {
       let name: string | undefined;
-      if (qtype === RType.A || qtype === RType.AAAA) name = service?.hostname;
-      else if (
+      if (qtype === RType.A || qtype === RType.AAAA) {
+        name = service?.hostname;
+      } else if (
         (qtype === RType.SRV || qtype === RType.TXT) &&
         service.name &&
         service.type &&
         service.protocol
-      ) name = `${service.name}._${service?.type}._${service?.protocol}.local`;
-      else if (
-        qtype === RType.PTR &&
-        service.type &&
-        service.protocol
-      ) name = `_${service.type}._${service.protocol}.local`;
-      if (typeof name === "undefined") return [];
+      ) {
+        name = `${service.name}._${service?.type}._${service?.protocol}.local`;
+      } else if (qtype === RType.PTR && service.type && service.protocol) {
+        name = `_${service.type}._${service.protocol}.local`;
+      }
+      if (typeof name === 'undefined') return [];
       return {
         name,
         type: qtype as number as QType,
         class: QClass.IN,
-        unicast
-      }
-    })
+        unicast,
+      };
+    }),
   };
 }
 
@@ -421,8 +459,8 @@ function fromRecordKey(key: string): QuestionRecord {
     name,
     type: parseInt(type),
     class: parseInt(qclass),
-    unicast: false
-  }
+    unicast: false,
+  };
 }
 
 export {
@@ -447,5 +485,5 @@ export {
   toServiceResourceRecords,
   fromServiceResourceRecords,
   toRecordKey,
-  fromRecordKey
+  fromRecordKey,
 };

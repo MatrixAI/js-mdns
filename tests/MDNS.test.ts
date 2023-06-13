@@ -1,7 +1,7 @@
-import { MDNSServiceEvent } from '@/events';
-import MDNS from '@/MDNS';
-import { Host } from '@/types';
+import type { MDNSServiceEvent } from '@/events';
+import type { Host } from '@/types';
 import { Timer } from '@matrixai/timer';
+import MDNS from '@/MDNS';
 import { testUtility } from './utils';
 
 describe('Responder', () => {
@@ -19,21 +19,21 @@ describe('Responder', () => {
   });
 
   test('some arbitrary test', async () => {
-    await mdns?.start({host: "::" as Host});
-    const name = "test";
+    await mdns?.start({ host: '::' as Host });
+    const name = 'test';
     const port = 1234;
     const protocol = 'udp';
-    const type = "polykey";
+    const type = 'polykey';
     mdns?.registerService({
       name,
       port,
       protocol,
-      type
-    })
-    mdns?.addEventListener("service", (e: MDNSServiceEvent) => {
-      // console.log(e.detail);
+      type,
+    });
+    mdns?.addEventListener('service', (e: MDNSServiceEvent) => {
+      // Console.log(e.detail);
     });
     mdns?.query('uscan', 'tcp');
-    // await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
+    // Await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
   });
 });

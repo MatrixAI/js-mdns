@@ -42,13 +42,19 @@ type Port = Opaque<'Port', number>;
   */
 type Address = Opaque<'Address', string>;
 
-type Service = {
+type ServiceConstructor = {
   name: string;
   type: string;
   protocol: 'udp' | 'tcp';
   port: number;
   txt?: Record<string, string>;
 }
+
+type Service = {
+  hostname: Hostname;
+  ipv4?: Host;
+  ipv6?: Host;
+} & ServiceConstructor;
 
 export {
   Callback,
@@ -57,5 +63,6 @@ export {
   Hostname,
   Port,
   Address,
+  ServiceConstructor,
   Service
 }

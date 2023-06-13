@@ -649,4 +649,5 @@ export {
   generateResourceRecord,
   generateTXTRecordData,
   generateSRVRecordData,
+  isStringRecord
 };

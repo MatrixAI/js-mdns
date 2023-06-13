@@ -1,7 +1,7 @@
 import { Callback, Host, Hostname, PromiseDeconstructed, Service } from "./types";
 import { IPv4, IPv6, Validator } from 'ip-num';
 import dns from "dns";
-import { StringRecord, RType, RClass, SRVRecord, ResourceRecord, TXTRecord } from "@/dns";
+import { StringRecord, RType, RClass, SRVRecord, ResourceRecord, TXTRecord, QuestionRecord } from "@/dns";
 
 /**
  * Is it an IPv4 address?
@@ -281,18 +281,30 @@ function resolvesZeroIP(host: Host): Host {
   }
 }
 
-function toHostResourceRecords(hosts: Host[], options: Partial<StringRecord> & { name: string }): StringRecord[] {
+// Default ResourceRecord ttl is 120 seconds
+function toHostResourceRecords(hosts: Host[], hostname: Hostname, flush: boolean = false, ttl: number = 120): StringRecord[] {
   return hosts.map(host => ({
-    name: options.name,
+    name: hostname,
     type: isIPv4(host) ? RType.A : RType.AAAA,
     class: RClass.IN,
-    ttl: options.ttl ?? 120, // Default StringRecord ttl is 120 seconds
-    data: options.data ?? host,
-    flush: options.flush ?? false
+    ttl, // Default StringRecord ttl is 120 seconds
+    data: host,
+    flush
   }));
 }
 
-function toServiceResourceRecords(services: Service[], hostname: Hostname, flush?: boolean, ttl?: number): ResourceRecord[] {
+function isService(service: any): service is Service {
+  return (
+    typeof service.hostname === "string" &&
+    typeof service.name === "string" &&
+    typeof service.type === "string" &&
+    typeof service.protocol === "string" &&
+    typeof service.port === "number"
+  )
+}
+
+// Default ResourceRecord ttl is 120 seconds
+function toServiceResourceRecords(services: Service[], hostname: Hostname, flush: boolean = false, ttl: number = 120): ResourceRecord[] {
   return services.flatMap(service => {
     const serviceDomain = `_${service.type}._${service.protocol}.local`;
     const fdqn = `${service.name}.${serviceDomain}`;
@@ -301,8 +313,8 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
         name: fdqn,
         type: RType.SRV,
         class: RClass.IN,
-        ttl: ttl ?? 120, // Default SRVRecord ttl is 120 seconds
-        flush: flush ?? false,
+        ttl: ttl,
+        flush: flush,
         data: {
           priority: 0,
           weight: 0,
@@ -314,28 +326,78 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
         name: fdqn,
         type: RType.TXT,
         class: RClass.IN,
-        ttl: ttl ?? 120, // Default TXTRecord ttl is 120 seconds
-        flush: flush ?? false,
+        ttl: ttl,
+        flush: flush,
         data: service.txt ?? {}
       },
       {
         name: serviceDomain,
         type: RType.PTR,
         class: RClass.IN,
-        ttl: ttl ?? 120, // Default TXTRecord ttl is 120 seconds
-        flush: flush ?? false,
+        ttl: ttl,
+        flush: flush,
         data: fdqn,
       },
       {
         name: "_services._dns-sd._udp.local",
         type: RType.PTR,
         class: RClass.IN,
-        ttl: ttl ?? 120, // Default TXTRecord ttl is 120 seconds
-        flush: flush ?? false,
+        ttl: ttl,
+        flush: flush,
         data: serviceDomain,
       }
     ]
   });
+}
+
+function fromServiceResourceRecords(records: ResourceRecord[]): Service[] {
+  const services: Record<string, Partial<Service>> = {};
+  for (const record of records.sort((a, b) => b.type - a.type)) {
+    if (typeof services[record.name] === "undefined") services[record.name] = {};
+    const splitName = record.name.split('.');
+    if (record.type ===  RType.TXT) {
+      services[record.name].txt = record.data;
+    }
+    else if (record.type === RType.SRV) {
+      services[record.name].port = record.data.port;
+      services[record.name].hostname = record.data.target as Hostname;
+    }
+    else if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local") {
+      if (typeof services[record.data] === "undefined") services[record.data] = {};
+      services[record.data].name = record.data.split('.')[0];
+      services[record.data].type = splitName[0].slice(1);
+      services[record.data].protocol = splitName[1].slice(1) as any;
+    }
+    else if (record.type === RType.A) {
+      const serviceIndex = Object.values(services).find(service => service.hostname === record.name);
+      if (typeof serviceIndex !== "undefined") {
+        serviceIndex.ipv4 = record.data as Host;
+      }
+    }
+    else if (record.type === RType.AAAA) {
+      const serviceIndex = Object.values(services).find(service => service.hostname === record.name);
+      if (typeof serviceIndex !== "undefined") {
+        serviceIndex.ipv6 = record.data as Host;
+      }
+    }
+  }
+
+  return Object.values(services).filter(isService);
+}
+
+function toRecordKey(record: ResourceRecord | QuestionRecord): string {
+  return [record.name, record.type, (record as any).class].join('\u0000');
+}
+
+function fromRecordKey(key: string): QuestionRecord {
+  let name, type, qclass;
+  [name, type, qclass] = key.split('\u0000');
+  return {
+    name,
+    type: parseInt(type),
+    class: parseInt(qclass),
+    unicast: false
+  }
 }
 
 export {
@@ -357,5 +419,8 @@ export {
   resolvesZeroIP,
   isHostWildcard,
   toHostResourceRecords,
-  toServiceResourceRecords
+  toServiceResourceRecords,
+  fromServiceResourceRecords,
+  toRecordKey,
+  fromRecordKey
 };

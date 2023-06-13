@@ -3,9 +3,10 @@ import os from 'os';
 import * as utils from './utils';
 import * as errors from './errors';
 import { CreateDestroyStartStop } from '@matrixai/async-init/dist/CreateDestroyStartStop';
-import { generatePacket, Packet, PacketOpCode, PacketType, parsePacket, QClass, QType, RClass, RCode, ResourceRecord, RType, StringRecord } from './dns';
-import { Host, Hostname, Port, Service } from './types';
+import { generatePacket, isStringRecord, Packet, PacketOpCode, PacketType, parsePacket, QClass, QType, QuestionRecord, RClass, RCode, ResourceRecord, RType, StringRecord } from './dns';
+import { Host, Hostname, Port, Service, ServiceConstructor } from './types';
 import { Timer } from '@matrixai/timer';
+import { MDNSServiceEvent } from './events';
 
 const MDNS_TTL = 255;
 
@@ -20,9 +21,13 @@ interface MDNS extends CreateDestroyStartStop {}
 )
 class MDNS extends EventTarget {
   protected services: Service[] = [];
-  protected externalServices: Service[] = [];
+  protected resourceRecordCache: ResourceRecord[] = [];
+  protected resourceRecordCacheDirty = true;
+
+  protected externalResourceRecordCache: Record<string, { record: ResourceRecord, timer: Timer }[]> = {};
+  protected queries: Map<string, { record: QuestionRecord, timer: Timer }> = new Map();
+
   protected boundHosts: Host[] = [];
-  protected queryTimers: Timer[] = [];
 
   protected socket: dgram.Socket;
   protected _host: Host;
@@ -145,7 +150,7 @@ class MDNS extends EventTarget {
     address = utils.buildAddress(this._host, this._port);
     console.log(`Started ${this.constructor.name} on ${address}`);
 
-    const hostRecords: StringRecord[] = utils.toHostResourceRecords(this.boundHosts, { name: this._hostname });
+    const hostRecords: StringRecord[] = utils.toHostResourceRecords(this.boundHosts, this._hostname, true);
     const packet: Packet = {
       id: 0,
       flags: {
@@ -208,15 +213,19 @@ class MDNS extends EventTarget {
   private async handleSocketMessageQuery(
     packet: Packet,
     rinfo: dgram.RemoteInfo,
-  ): Promise<void> {
+  ) {
     if (packet.flags.type !== PacketType.QUERY) return;
     const answerResourceRecords: ResourceRecord[] = [];
 
-    const hostResourceRecords = utils.toHostResourceRecords(this.boundHosts, {name: this._hostname});
-    const toServiceResourceRecords = utils.toServiceResourceRecords(this.services, this._hostname);
-    const allResourceRecords = toServiceResourceRecords.concat(hostResourceRecords);
+    if (this.resourceRecordCacheDirty) {
+      this.resourceRecordCacheDirty = false;
+      const hostResourceRecords = utils.toHostResourceRecords(this.boundHosts, this._hostname);
+      const toServiceResourceRecords = utils.toServiceResourceRecords(this.services, this._hostname);
+      this.resourceRecordCache = toServiceResourceRecords.concat(hostResourceRecords);
+    }
+
     for (const question of packet.questions) {
-      const foundRecord = allResourceRecords.find(record =>
+      const foundRecord = this.resourceRecordCache.find(record =>
         record.name === question.name
         && (record.type as number === question.type || question.type === QType.ANY)
         && ((record as any).class as number === question.class || question.class === QClass.ANY)
@@ -247,7 +256,65 @@ class MDNS extends EventTarget {
     packet: Packet,
     rinfo: dgram.RemoteInfo
   ) {
-    packet.answers.forEach((answer) => {});
+    const dirtiedServiceFdqns: string[] = [];
+
+    for (const record of packet.answers.concat(packet.additionals).sort((a, b) => b.type - a.type)) {
+      let serviceFqdn: string | undefined;
+      if (record.type === RType.SRV || record.type === RType.TXT) {
+        serviceFqdn = record.name;
+      }
+      if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local.") {
+        serviceFqdn = record.data
+      }
+      if (record.type === RType.A || record.type === RType.AAAA) {
+        const externalRecords = Object.values(this.externalResourceRecordCache).flat().map(wrapper => wrapper.record);
+        const srvRecordIndex = externalRecords.findIndex(externalRecord => externalRecord.type === RType.SRV && externalRecord.data.target === record.name);
+        if (srvRecordIndex !== -1) serviceFqdn = externalRecords[srvRecordIndex].name;
+      }
+      if (typeof serviceFqdn === "undefined") continue;
+      if (!(serviceFqdn in this.externalResourceRecordCache)) {
+        this.externalResourceRecordCache[serviceFqdn] = [];
+      }
+      const existingRecordIndex = this.externalResourceRecordCache[serviceFqdn]
+      .findIndex(wrapper =>
+        wrapper.record.name === record.name &&
+        wrapper.record.type === record.type &&
+        (wrapper.record as any).class ===  (record as any).class
+      );
+
+      if ((record as any).flush) {
+        if (existingRecordIndex !== -1) {
+          this.externalResourceRecordCache[serviceFqdn][existingRecordIndex].timer.cancel();
+          this.externalResourceRecordCache[serviceFqdn].splice(existingRecordIndex, 1);
+          if ((record as any).ttl === 0) {
+            dirtiedServiceFdqns.push(serviceFqdn);
+            continue;
+          }
+        }
+      }
+      else if (existingRecordIndex !== -1) continue;
+
+      this.externalResourceRecordCache[serviceFqdn].push({
+        record,
+        timer: new Timer(() => {
+
+        }, (record as any).ttl * 1000)
+      });
+      dirtiedServiceFdqns.push(serviceFqdn);
+    }
+
+    for (const dirtiedService of dirtiedServiceFdqns) {
+      const newServices = utils.fromServiceResourceRecords(this.externalResourceRecordCache[dirtiedService].map(wrapper => wrapper.record));
+      if (newServices.length !== 0) {
+        for (const service of newServices) {
+          this.dispatchEvent(new MDNSServiceEvent({ detail: service }));
+        }
+      }
+    }
+
+    if (packet.questions.length !== 0) {
+      await this.handleSocketMessageQuery(packet, rinfo);
+    }
   }
 
   private async handleSocketError(err: any) {
@@ -256,16 +323,42 @@ class MDNS extends EventTarget {
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
   public async stop(): Promise<void> {
-    await this.socket.close();
+    const hostResourceRecords = utils.toHostResourceRecords(this.boundHosts, this._hostname , true, 0);
+    const toServiceResourceRecords = utils.toServiceResourceRecords(this.services, this._hostname, true, 0);
+    const allFlushedResourceRecords = toServiceResourceRecords.concat(hostResourceRecords);
+    const goodbyePacket: Packet = {
+      id: 0,
+      flags: {
+        opcode: PacketOpCode.QUERY,
+        rcode: RCode.NoError,
+        type: PacketType.RESPONSE,
+      },
+      questions: [],
+      answers: allFlushedResourceRecords,
+      additionals: [],
+      authorities: []
+    };
+    await this.sendPacket(goodbyePacket);
+    await this.socketClose();
   }
 
   public async destroy(): Promise<void> {
     await this.stop();
+    this.resourceRecordCacheDirty = true;
+    this.resourceRecordCache = [];
+    this.services = [];
+    this.boundHosts = [];
   }
 
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
-  async registerService(service: Service): Promise<void> {
+  public registerService(serviceOptions: ServiceConstructor) {
+    const service: Service = {
+      hostname: this._hostname,
+      ...serviceOptions
+    };
+
     this.services.push(service);
+    this.resourceRecordCacheDirty = true;
     const advertisePacket: Packet = {
       id: 0,
       flags: {
@@ -281,14 +374,15 @@ class MDNS extends EventTarget {
     this.advertise(advertisePacket);
   }
 
-  async unregisterService(
+  public unregisterService(
     name: string,
     type: string,
     protocol: 'udp' | 'tcp',
-  ): Promise<void> {
+  ) {
     const serviceIndex = this.services.findIndex(s => s.name === name && s.type === type && s.protocol === protocol);
     if (serviceIndex === -1) throw new Error('Service not found'); // make this an mdns error later
     const removedServices = this.services.splice(serviceIndex, 1);
+    this.resourceRecordCacheDirty = true;
     const advertisePacket: Packet = {
       id: 0,
       flags: {
@@ -304,8 +398,18 @@ class MDNS extends EventTarget {
     this.advertise(advertisePacket);
   }
 
+
+
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
-  query(type: string, protocol: 'udp' | 'tcp') {
+  public query(type: string, protocol: 'udp' | 'tcp') {
+    const serviceDomain = `_${type}._${protocol}.local`;
+    const questionRecord: QuestionRecord = {
+      name: serviceDomain,
+      type: QType.PTR,
+      class: QClass.IN,
+      unicast: false
+    };
+    const recordKey = utils.toRecordKey(questionRecord);
     const queryPacket: Packet = {
       id: 0,
       flags: {
@@ -313,17 +417,20 @@ class MDNS extends EventTarget {
         rcode: RCode.NoError,
         type: PacketType.QUERY,
       },
-      questions: [{
-        name: type,
-        type: QType.PTR,
-        class: QClass.IN,
-        unicast: false
-      }],
+      questions: [questionRecord],
       answers: [],
       additionals: [],
       authorities: []
     };
-    this.sendPacket(queryPacket).then(() => {});
+    const querier = async (iteration: number = 1) => {
+      await this.sendPacket(queryPacket);
+      this.queries.delete(recordKey);
+      this.queries.set(recordKey, {
+        record: questionRecord,
+        timer: new Timer(() => querier(iteration * 2), iteration * 1000)
+      });
+    }
+    querier();
   };
 }
 

@@ -1,3 +1,4 @@
+import { MDNSServiceEvent } from '@/events';
 import MDNS from '@/MDNS';
 import { Host } from '@/types';
 import { Timer } from '@matrixai/timer';
@@ -29,6 +30,10 @@ describe('Responder', () => {
       protocol,
       type
     })
-    await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
+    mdns?.addEventListener("service", (e: MDNSServiceEvent) => {
+      // console.log(e.detail);
+    });
+    mdns?.query('ssh', 'tcp');
+    // await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
   });
 });

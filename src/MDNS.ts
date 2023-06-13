@@ -7,6 +7,7 @@ import { generatePacket, isStringRecord, Packet, PacketOpCode, PacketType, parse
 import { Host, Hostname, Port, Service, ServiceConstructor } from './types';
 import { Timer } from '@matrixai/timer';
 import { MDNSServiceEvent } from './events';
+import Logger from '@matrixai/logger';
 
 const MDNS_TTL = 255;
 
@@ -36,6 +37,8 @@ class MDNS extends EventTarget {
   protected _group: Host[];
   protected _hostname: Hostname;
 
+  protected logger: Logger;
+
   protected resolveHostname: (hostname: Hostname) => Host | PromiseLike<Host>;
 
   protected socketBind: (port: number, host: string) => Promise<void>;
@@ -44,20 +47,25 @@ class MDNS extends EventTarget {
 
   public static createMDNS({
     resolveHostname = utils.resolveHostname,
+    logger = new Logger(`${this.name}`)
   }: {
     resolveHostname?: (hostname: Hostname) => Host | PromiseLike<Host>;
+    logger?: Logger;
   }) {
     const mdns = new this({
       resolveHostname,
+      logger
     });
     return mdns;
   }
 
   public constructor({
     resolveHostname,
+    logger
   }) {
     super();
     this.resolveHostname = resolveHostname;
+    this.logger = logger;
   }
 
   // Starts the MDNS responder. This will work differently on different platforms. For platforms that already have a system-wide MDNS responder, this will do nothing. Else, sockets will be bound to interfaces for interacting with the multicast group address.
@@ -66,7 +74,7 @@ class MDNS extends EventTarget {
     port = 5353 as Port,
     ipv6Only = false,
     group = ['224.0.0.251', 'ff02::fb'] as Host[],
-    hostname = "abc.local" as Hostname,
+    hostname = `${os.hostname()}.local` as Hostname,
     reuseAddr = true,
   }: {
     host?: Host | Hostname;
@@ -77,7 +85,7 @@ class MDNS extends EventTarget {
     reuseAddr?: boolean;
   }): Promise<void> {
     let address = utils.buildAddress(host, port);
-    console.log(`Start ${this.constructor.name} on ${address}`);
+    this.logger.info(`Start ${this.constructor.name} on ${address}`);
     // Resolves the host which could be a hostname and acquire the type.
     // If the host is an IPv4 mapped IPv6 address, then the type should be udp6.
     const [host_, udpType] = await utils.resolveHost(
@@ -148,7 +156,7 @@ class MDNS extends EventTarget {
     this.socket.on('message', (...p) => this.handleSocketMessage(...p));
     this.socket.on('error', (...p) => this.handleSocketError(...p));
     address = utils.buildAddress(this._host, this._port);
-    console.log(`Started ${this.constructor.name} on ${address}`);
+    this.logger.info(`Started ${this.constructor.name} on ${address}`);
 
     const hostRecords: StringRecord[] = utils.toHostResourceRecords(this.boundHosts, this._hostname, true);
     const packet: Packet = {
@@ -201,7 +209,14 @@ class MDNS extends EventTarget {
   }
 
   private async handleSocketMessage(msg: Buffer, rinfo: dgram.RemoteInfo) {
-    const packet = parsePacket(msg);
+    let packet: Packet | undefined;
+    try {
+      packet = parsePacket(msg);
+    }
+    catch (err) {
+      this.logger.warn(err);
+    }
+    if (typeof packet === "undefined") return;
     if (packet.flags.type === PacketType.QUERY) {
       await this.handleSocketMessageQuery(packet, rinfo);
     }
@@ -216,6 +231,7 @@ class MDNS extends EventTarget {
   ) {
     if (packet.flags.type !== PacketType.QUERY) return;
     const answerResourceRecords: ResourceRecord[] = [];
+    const additionalResourceRecords: Map<string, ResourceRecord> = new Map();
 
     if (this.resourceRecordCacheDirty) {
       this.resourceRecordCacheDirty = false;
@@ -230,7 +246,37 @@ class MDNS extends EventTarget {
         && (record.type as number === question.type || question.type === QType.ANY)
         && ((record as any).class as number === question.class || question.class === QClass.ANY)
       );
-      if (foundRecord) answerResourceRecords.push(foundRecord);
+      if (foundRecord) {
+        answerResourceRecords.push(foundRecord)
+
+        let additionalResourceRecordCache: ResourceRecord[] = [];
+        // RFC 6763 12.1. Additionals in PTR
+        if (question.type === QType.PTR) {
+          additionalResourceRecordCache = this.resourceRecordCache.filter(record => (
+            (record.type === RType.SRV && record.name === foundRecord?.data) ||
+            (record.type === RType.TXT && record.name === foundRecord?.data) ||
+            record.type === RType.A || record.type === RType.AAAA
+          ));
+        }
+        // RFC 6763 12.2. Additionals in SRV
+        else if (question.type === QType.SRV) {
+          additionalResourceRecordCache = this.resourceRecordCache.filter(record => (record.type === RType.A || record.type === RType.AAAA));
+        }
+        // RFC 6762 6.2. Additionals in A
+        else if (question.type === QType.A) {
+          additionalResourceRecordCache = this.resourceRecordCache.filter(record => (record.type === RType.AAAA));
+        }
+        // RFC 6762 6.2. Additionals in AAAA
+        else if (question.type === QType.AAAA) {
+          additionalResourceRecordCache = this.resourceRecordCache.filter(record => (record.type === RType.A));
+        }
+        for (const additionalResourceRecord of additionalResourceRecordCache) {
+          const additionalResourceRecordKey = utils.toRecordKey(additionalResourceRecord);
+          if (!additionalResourceRecords.has(additionalResourceRecordKey)) {
+            additionalResourceRecords.set(additionalResourceRecordKey, additionalResourceRecord);
+          }
+        }
+      };
     }
 
     if (answerResourceRecords.length === 0) return;
@@ -244,7 +290,7 @@ class MDNS extends EventTarget {
       },
       questions: [],
       answers: answerResourceRecords,
-      additionals: [],
+      additionals: [...additionalResourceRecords.values()],
       authorities: []
     };
     if (this.socket) {
@@ -258,18 +304,19 @@ class MDNS extends EventTarget {
   ) {
     const dirtiedServiceFdqns: string[] = [];
 
+    // Sort by type descending so that SRV records are processed BEFORE A/AAAA records
     for (const record of packet.answers.concat(packet.additionals).sort((a, b) => b.type - a.type)) {
       let serviceFqdn: string | undefined;
       if (record.type === RType.SRV || record.type === RType.TXT) {
         serviceFqdn = record.name;
       }
-      if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local.") {
+      else if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local.") {
         serviceFqdn = record.data
       }
-      if (record.type === RType.A || record.type === RType.AAAA) {
+      else if (record.type === RType.A || record.type === RType.AAAA) {
         const externalRecords = Object.values(this.externalResourceRecordCache).flat().map(wrapper => wrapper.record);
-        const srvRecordIndex = externalRecords.findIndex(externalRecord => externalRecord.type === RType.SRV && externalRecord.data.target === record.name);
-        if (srvRecordIndex !== -1) serviceFqdn = externalRecords[srvRecordIndex].name;
+        const srvRecord = externalRecords.find(externalRecord => externalRecord.type === RType.SRV && externalRecord.data.target === record.name);
+        if (typeof srvRecord !== "undefined") serviceFqdn = srvRecord.name;
       }
       if (typeof serviceFqdn === "undefined") continue;
       if (!(serviceFqdn in this.externalResourceRecordCache)) {
@@ -282,6 +329,7 @@ class MDNS extends EventTarget {
         (wrapper.record as any).class ===  (record as any).class
       );
 
+      // if the record exists and is being flushed, delete it
       if ((record as any).flush) {
         if (existingRecordIndex !== -1) {
           this.externalResourceRecordCache[serviceFqdn][existingRecordIndex].timer.cancel();
@@ -292,39 +340,59 @@ class MDNS extends EventTarget {
           }
         }
       }
+      // if the record is not being flushed and already exists, skip it
       else if (existingRecordIndex !== -1) continue;
 
+      // if the record is either not being flushed and does not exist, or exists and is being flushed add it
       this.externalResourceRecordCache[serviceFqdn].push({
         record,
-        timer: new Timer(() => {
-
+        timer: new Timer(async () => {
+          if (typeof serviceFqdn === "string" && serviceFqdn in this.externalResourceRecordCache) {
+            const existingRecordIndex = this.externalResourceRecordCache[serviceFqdn]
+            .findIndex(wrapper =>
+              wrapper.record.name === record.name &&
+              wrapper.record.type === record.type &&
+              (wrapper.record as any).class ===  (record as any).class
+            );
+            if (existingRecordIndex !== -1) {
+              this.externalResourceRecordCache[serviceFqdn].splice(existingRecordIndex, 1);
+              await this.processDirtiedServices([serviceFqdn]);
+            }
+          }
         }, (record as any).ttl * 1000)
       });
       dirtiedServiceFdqns.push(serviceFqdn);
     }
 
-    for (const dirtiedService of dirtiedServiceFdqns) {
-      const wrappedService = utils.fromServiceResourceRecords(this.externalResourceRecordCache[dirtiedService].map(wrapper => wrapper.record));
-      const queryPacket: Packet = {
-        id: 0,
-        flags: {
-          opcode: PacketOpCode.QUERY,
-          rcode: RCode.NoError,
-          type: PacketType.QUERY,
-        },
-        questions: wrappedService.remainderQuestionRecords,
-        answers: [],
-        additionals: [],
-        authorities: []
-      };
-      await this.sendPacket(queryPacket);
-      if (typeof wrappedService.service !== "undefined") {
-        this.dispatchEvent(new MDNSServiceEvent({ detail: wrappedService.service }));
-      };
-    }
+    await this.processDirtiedServices(dirtiedServiceFdqns);
 
     if (packet.questions.length !== 0) {
       await this.handleSocketMessageQuery(packet, rinfo);
+    }
+  }
+
+  private async processDirtiedServices(dirtiedServiceFdqns: string[]) {
+    for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
+      const wrappedService = utils.fromServiceResourceRecords(this.externalResourceRecordCache[dirtiedServiceFdqn].map(wrapper => wrapper.record));
+      if (wrappedService.remainderQuestionRecords.length !== 0) {
+        const queryPacket: Packet = {
+          id: 0,
+          flags: {
+            opcode: PacketOpCode.QUERY,
+            rcode: RCode.NoError,
+            type: PacketType.QUERY,
+          },
+          questions: wrappedService.remainderQuestionRecords,
+          answers: [],
+          additionals: [],
+          authorities: []
+        };
+        await this.sendPacket(queryPacket);
+      }
+      if (typeof wrappedService.service !== "undefined") {
+        this.dispatchEvent(new MDNSServiceEvent({ detail: wrappedService.service }));
+      };
+      // if the service is being flushed with ttl=0, delete it and servicedelete event
     }
   }
 
@@ -433,15 +501,16 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: []
     };
-    const querier = async (iteration: number = 1) => {
+    const querierFn = async (iteration: number = 1) => {
       await this.sendPacket(queryPacket);
       this.queries.delete(recordKey);
+      // set ceiling to 1 hr.
       this.queries.set(recordKey, {
         record: questionRecord,
-        timer: new Timer(() => querier(iteration * 2), iteration * 1000)
+        timer: new Timer(() => querierFn(iteration < 3600 ? iteration * 2 : 3600), iteration * 1000)
       });
     }
-    querier();
+    querierFn();
   };
 }
 

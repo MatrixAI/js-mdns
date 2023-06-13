@@ -31,7 +31,7 @@ describe('Responder', () => {
       type
     })
     mdns?.addEventListener("service", (e: MDNSServiceEvent) => {
-      console.log(e.detail);
+      // console.log(e.detail);
     });
     mdns?.query('uscan', 'tcp');
     // await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)

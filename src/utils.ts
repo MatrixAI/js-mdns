@@ -352,7 +352,11 @@ function toServiceResourceRecords(services: Service[], hostname: Hostname, flush
 
 function fromServiceResourceRecords(records: ResourceRecord[], unicast: boolean = false): { service?: Service, remainderQuestionRecords: QuestionRecord[] } {
   const service: Partial<Service> = {};
+
+  // Initialise as all required record types for a service, so that we can check if any are missing and return questions if needed.
   const remainderResourceRecordTypes = [RType.PTR, RType.SRV, RType.TXT, RType.A, RType.AAAA];
+
+  // Sort by type descending so that SRV records are processed BEFORE A/AAAA records
   for (const record of records.sort((a, b) => b.type - a.type)) {
     if (record.type ===  RType.TXT) {
       service.txt = record.data;
@@ -362,11 +366,10 @@ function fromServiceResourceRecords(records: ResourceRecord[], unicast: boolean 
       service.hostname = record.data.target as Hostname;
     }
     else if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local") {
-      console.log(record)
       const splitName = record.name.split('.');
-      service.name = record.data.split('.')[0];
-      service.type = splitName[0].slice(1);
-      service.protocol = splitName[1].slice(1) as any;
+      service.name = record.data.split('.').at(0);
+      service.type = splitName.at(0)?.slice(1);
+      service.protocol = splitName.at(1)?.slice(1) as any;
     }
     else if (record.type === RType.A) {
       service.ipv4 = record.data as Host
@@ -374,7 +377,8 @@ function fromServiceResourceRecords(records: ResourceRecord[], unicast: boolean 
     else if (record.type === RType.AAAA) {
       service.ipv6 = record.data as Host;
     }
-    if (record.type === RType.PTR && record.name !== "_services._dns-sd._udp.local") {
+    // Remove the record type from the remainder list if it's been processed, ignore PTR records for _services._dns-sd._udp.local
+    if (!(record.type === RType.PTR && record.name === "_services._dns-sd._udp.local")) {
       remainderResourceRecordTypes.splice(remainderResourceRecordTypes.indexOf(record.type), 1);
     }
   }

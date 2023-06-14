@@ -507,7 +507,7 @@ class MDNS extends EventTarget {
 
   public networkRecordCacheRemove(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]) {
     if (!Array.isArray(records)) records = [records];
-    for (const recordKeys of this.networkRecordCacheGet(records).map(record => MDNSCache.toRecordKey(record))) {
+    for (const recordKeys of this.networkRecordCacheGet(records).map(record => utils.toRecordKey(record))) {
       this.networkRecordCache.delete(recordKeys);
     }
     this.networkRecordCacheTimerReset();
@@ -525,7 +525,7 @@ class MDNS extends EventTarget {
         )).map(wrapper => wrapper.record));
         continue;
       }
-      const recordKey = MDNSCache.toRecordKey(record);
+      const recordKey = utils.toRecordKey(record);
       resourceRecords.push(...[this.networkRecordCache.get(recordKey)?.record ?? []].flat());
     }
     return resourceRecords;

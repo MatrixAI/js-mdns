@@ -4,7 +4,8 @@ import { MDNSCacheExpiredEvent } from "./events";
 import { Hostname } from "./types";
 
 class MDNSCache extends EventTarget {
-  protected cache: Map<string, { record: ResourceRecord, timer: Timer }> = new Map()
+  protected cache: Map<string, { record: ResourceRecord, timestamp: number }> = new Map()
+  protected timer: Timer = new Timer(() => {});
 
   public set(records: ResourceRecord | ResourceRecord[]) {
     if (!Array.isArray(records)) records = [records];
@@ -22,31 +23,16 @@ class MDNSCache extends EventTarget {
         }
       }
       else if (typeof existingRecord !== 'undefined') return;
-      this.cache.set(recordKey, { record, timer: new Timer(() => {
-        this.dispatchEvent(new MDNSCacheExpiredEvent({detail: record}));
-        this.cache.delete(recordKey);
-      }, ttl * 1000 ) });
+      this.setTimer();
     }
   }
 
   public remove(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]) {
     if (!Array.isArray(records)) records = [records];
-    for (const record of records) {
-      if ((record as any).class === QClass.ANY || (record as any).type === QType.ANY) {
-        const foundRecords = [...this.cache.values()].filter(wrapper => (
-          (record.name === wrapper.record.name) &&
-          ((record as any).class === QClass.ANY || (wrapper.record as any).class === (record as any).class) &&
-          (record.type === QType.ANY || (wrapper.record as any).type === record.type)
-        ))
-        for (const foundRecord of foundRecords) {
-          foundRecord.timer.cancel();
-        }
-        continue;
-      }
-      const recordKey = MDNSCache.toRecordKey(record);
-      this.cache.get(recordKey)?.timer.cancel();
-      this.cache.delete(recordKey);
+    for (const recordKeys of this.get(records).map(record => MDNSCache.toRecordKey(record))) {
+      this.cache.delete(recordKeys);
     }
+    this.setTimer();
   }
 
   public get(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]): ResourceRecord[] {
@@ -88,6 +74,22 @@ class MDNSCache extends EventTarget {
       }
     }
     return [...fdqns.values()] as Hostname[];
+  }
+
+  private setTimer() {
+    this.timer.cancel();
+    const sortedCache = [...this.cache.entries()].sort((a, b) =>
+      ((a[1].record as any).ttl + a[1].timestamp) -
+      ((b[1].record as any).ttl + b[1].timestamp)
+    );
+    const fastestExpiringRecordPOJO = sortedCache.at(0);
+    if (typeof fastestExpiringRecordPOJO !== 'undefined') {
+      const [fastestExpiringRecordKey, fastestExpiringRecord] = fastestExpiringRecordPOJO;
+      this.timer = new Timer(() => {
+        this.cache.delete(fastestExpiringRecordKey);
+        this.setTimer();
+      }, ((fastestExpiringRecord.record as any).ttl * 1000) + fastestExpiringRecord.timestamp - new Date().getTime())
+    }
   }
 
   public getAll(): ResourceRecord[] {

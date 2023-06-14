@@ -12,10 +12,10 @@ import type {
   TXTRecordValue,
   PacketHeader,
 } from './types';
+import { IPv6 } from 'ip-num';
 import { RType } from './types';
 
 import * as errors from './errors';
-import { IPv6 } from 'ip-num';
 
 // Packet Flag Masks
 const AUTHORITATIVE_ANSWER_MASK = 0x400;
@@ -92,7 +92,11 @@ function parseLabels(
       const dv = new DataView(currentBuffer.buffer, currentBuffer.byteOffset);
       const pointerOffset = dv.getUint16(currentIndex, false) & 0x3fff;
 
-      if (traversedPointers.includes(pointerOffset)) throw new errors.ErrorDNSParse('Name compression pointer causes recursion');
+      if (traversedPointers.includes(pointerOffset)) {
+        throw new errors.ErrorDNSParse(
+          'Name compression pointer causes recursion',
+        );
+      }
       traversedPointers.push(pointerOffset);
 
       currentIndex = pointerOffset; // Set the currentIndex to the offset of the pointer in relation to the original buffer that is passed in
@@ -177,11 +181,10 @@ function generateIPv6(ip: string): Uint8Array {
   try {
     const ipv6 = new IPv6(ip);
     const parts = ipv6.getHexadecatet();
-    for (let i = 0; i < 8; i ++) {
+    for (let i = 0; i < 8; i++) {
       dv.setUint16(i * 2, parts[i].getValue(), false);
     }
-  }
-  catch (err) {
+  } catch (err) {
     throw new errors.ErrorDNSGenerate('Invalid IPv6 address');
   }
 
@@ -507,7 +510,7 @@ function parseTXTRecordData(
 
   while (inputBuffer.length !== 0) {
     const textLength = inputBuffer[0];
-    const decodedPair = new TextDecoder("utf-8", { fatal: false }).decode(
+    const decodedPair = new TextDecoder('utf-8', { fatal: false }).decode(
       inputBuffer.subarray(1, textLength + 1),
     );
 
@@ -649,4 +652,5 @@ export {
   generateResourceRecord,
   generateTXTRecordData,
   generateSRVRecordData,
+  isStringRecord,
 };

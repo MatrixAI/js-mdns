@@ -5,19 +5,6 @@ import MDNS from '@/MDNS';
 import { testUtility } from './utils';
 
 describe('Responder', () => {
-  let mdns: MDNS | null;
-
-  beforeAll(() => {
-    mdns = MDNS.createMDNS({});
-    // A noop test utility
-    // demonstrates using utils inside tests
-    testUtility();
-  });
-
-  afterAll(() => {
-    mdns = null;
-  });
-
   test('some arbitrary test', async () => {
     const mdnsPort = 12345 as Port;
 
@@ -53,8 +40,8 @@ describe('Responder', () => {
       expect(e.detail.protocol).toBe(protocol);
       expect(e.detail.type).toBe(type);
       expect(e.detail.hostname).toBe(mdns1Hostname);
-      // mdns1.stop();
-      // mdns2.stop();
+      mdns1.stop();
+      mdns2.stop();
     });
     // Await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
   });

@@ -1,6 +1,5 @@
 import { Timer } from "@matrixai/timer"
 import { QClass, QType, QuestionRecord, ResourceRecord, RType } from "./dns"
-import { MDNSCacheExpiredEvent } from "./events";
 import { Hostname } from "./types";
 
 class MDNSCache extends EventTarget {
@@ -23,7 +22,8 @@ class MDNSCache extends EventTarget {
         }
       }
       else if (typeof existingRecord !== 'undefined') return;
-      this.setTimer();
+      this.cache.set(recordKey, { record, timestamp: Date.now() });
+      this.resetTimer();
     }
   }
 
@@ -32,7 +32,7 @@ class MDNSCache extends EventTarget {
     for (const recordKeys of this.get(records).map(record => MDNSCache.toRecordKey(record))) {
       this.cache.delete(recordKeys);
     }
-    this.setTimer();
+    this.resetTimer();
   }
 
   public get(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]): ResourceRecord[] {
@@ -76,7 +76,7 @@ class MDNSCache extends EventTarget {
     return [...fdqns.values()] as Hostname[];
   }
 
-  private setTimer() {
+  private resetTimer() {
     this.timer.cancel();
     const sortedCache = [...this.cache.entries()].sort((a, b) =>
       ((a[1].record as any).ttl + a[1].timestamp) -
@@ -87,7 +87,7 @@ class MDNSCache extends EventTarget {
       const [fastestExpiringRecordKey, fastestExpiringRecord] = fastestExpiringRecordPOJO;
       this.timer = new Timer(() => {
         this.cache.delete(fastestExpiringRecordKey);
-        this.setTimer();
+        this.resetTimer();
       }, ((fastestExpiringRecord.record as any).ttl * 1000) + fastestExpiringRecord.timestamp - new Date().getTime())
     }
   }

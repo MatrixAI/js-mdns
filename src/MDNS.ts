@@ -31,7 +31,6 @@ import {
   RType,
 } from './dns';
 import { MDNSServiceEvent } from './events';
-import MDNSCache from './MDNSCache';
 
 const MDNS_TTL = 255;
 

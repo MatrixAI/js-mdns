@@ -13,16 +13,4 @@ class MDNSServiceEvent extends Event {
   }
 }
 
-class MDNSCacheExpiredEvent extends Event {
-  public detail: ResourceRecord;
-  constructor(
-    options: EventInit & {
-      detail: ResourceRecord;
-    },
-  ) {
-    super('service', options);
-    this.detail = options.detail;
-  }
-}
-
-export { MDNSServiceEvent, MDNSCacheExpiredEvent };
+export { MDNSServiceEvent };

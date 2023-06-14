@@ -1,3 +1,4 @@
+import { ResourceRecord } from './dns';
 import type { Service } from './types';
 
 class MDNSServiceEvent extends Event {
@@ -12,4 +13,16 @@ class MDNSServiceEvent extends Event {
   }
 }
 
-export { MDNSServiceEvent };
+class MDNSCacheExpiredEvent extends Event {
+  public detail: ResourceRecord;
+  constructor(
+    options: EventInit & {
+      detail: ResourceRecord;
+    },
+  ) {
+    super('service', options);
+    this.detail = options.detail;
+  }
+}
+
+export { MDNSServiceEvent, MDNSCacheExpiredEvent };

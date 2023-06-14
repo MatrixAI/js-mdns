@@ -362,7 +362,7 @@ class MDNS extends EventTarget {
         serviceFqdn = record.name;
       } else if (
         record.type === RType.PTR &&
-        record.name !== '_services._dns-sd._udp.local.'
+        record.name !== '_services._dns-sd._udp.local'
       ) {
         serviceFqdn = record.data;
       } else if (record.type === RType.A || record.type === RType.AAAA) {
@@ -374,6 +374,7 @@ class MDNS extends EventTarget {
             externalRecord.type === RType.SRV &&
             externalRecord.data.target === record.name,
         );
+        // this needs to be changed, otherwise one hostname cant have multiple services.
         if (typeof srvRecord !== 'undefined') serviceFqdn = srvRecord.name;
       }
       if (typeof serviceFqdn === 'undefined') continue;
@@ -508,6 +509,9 @@ class MDNS extends EventTarget {
       authorities: [],
     };
     await this.sendPacket(goodbyePacket);
+    for (const query of this.queries.values()) {
+      query.timer.cancel();
+    }
     await this.socketClose();
   }
 

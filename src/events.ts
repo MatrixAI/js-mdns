@@ -13,4 +13,16 @@ class MDNSServiceEvent extends Event {
   }
 }
 
-export { MDNSServiceEvent };
+class MDNSServiceRemovedEvent extends Event {
+  public detail: Service;
+  constructor(
+    options: EventInit & {
+      detail: Service;
+    },
+  ) {
+    super('service-removed', options);
+    this.detail = options.detail;
+  }
+}
+
+export { MDNSServiceEvent, MDNSServiceRemovedEvent };

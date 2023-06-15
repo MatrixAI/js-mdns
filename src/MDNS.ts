@@ -48,6 +48,7 @@ class MDNS extends EventTarget {
   protected localRecordCache: ResourceRecord[] = [];
   protected localRecordCacheDirty = true;
 
+  // TODO: cache needs to be LRU to prevent DDoS
   protected networkRecordCache: Map<string, { record: ResourceRecord, timestamp: number }> = new Map();
   protected networkRecordCacheTimer: Timer = new Timer();
 
@@ -220,7 +221,7 @@ class MDNS extends EventTarget {
       }
       catch (err) {
         if (err.code !== 'ERR_SOCKET_DGRAM_NOT_RUNNING') {
-          // deal with this
+          // TODO: deal with this
         }
       }
     };
@@ -457,7 +458,7 @@ class MDNS extends EventTarget {
         foundServices.push(partialService);
       }
       else {
-        // emit service removed here!
+        // TODO: emit service removed here!
       }
       allRemainingQuestions.push(...remainingQuestions.values());
     }
@@ -518,6 +519,7 @@ class MDNS extends EventTarget {
     const resourceRecords: ResourceRecord[] = [];
     for (const record of records) {
       if ((record as any).class === QClass.ANY || (record as any).type === QType.ANY) {
+        // TODO: We need to be able to use an insertion sorted array instead of sorting the map everytime as it is inefficient.
         resourceRecords.push(...[...this.networkRecordCache.values()].filter(wrapper => (
           (record.name === wrapper.record.name) &&
           ((record as any).class === QClass.ANY || (wrapper.record as any).class === (record as any).class) &&
@@ -565,7 +567,7 @@ class MDNS extends EventTarget {
       const [fastestExpiringRecordKey, fastestExpiringRecord] = fastestExpiringRecordPOJO;
       this.networkRecordCacheTimer = new Timer(() => {
         this.networkRecordCache.delete(fastestExpiringRecordKey);
-        // Requery missing packet, if failed, remove from cache and emit service unregistered
+        // TODO: Requery missing packet, if failed, remove from cache and emit service unregistered
         this.networkRecordCacheTimerReset();
       }, ((fastestExpiringRecord.record as any).ttl * 1000) + fastestExpiringRecord.timestamp - new Date().getTime())
     }

@@ -57,6 +57,7 @@ type Service = {
 } & ServiceConstructor;
 
 export type {
+  Opaque,
   Callback,
   PromiseDeconstructed,
   Host,

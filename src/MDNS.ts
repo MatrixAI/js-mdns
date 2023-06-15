@@ -543,12 +543,12 @@ class MDNS extends EventTarget {
     const fastestExpiringRecordPOJO = sortedCache.at(0);
     if (typeof fastestExpiringRecordPOJO !== 'undefined') {
       const { record, timestamp } = fastestExpiringRecordPOJO;
-      this.networkRecordCacheTimer = new Timer(() => {
+      this.networkRecordCacheTimer = new Timer(async () => {
         // TODO: Requery missing packets
         const fastestExpiringRecord = record;
         (fastestExpiringRecord as any).ttl = 0;
         (fastestExpiringRecord as any).flush = true;
-        this.processIncomingResourceRecords([fastestExpiringRecord]);
+        await this.processIncomingResourceRecords([fastestExpiringRecord]);
         this.networkRecordCacheTimerReset();
       }, ((record as any).ttl * 1000) + timestamp - new Date().getTime())
     }
@@ -584,7 +584,7 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-    // this.networkRecordCacheTimer.cancel();
+    this.networkRecordCacheTimer.cancel();
     await this.sendPacket(goodbyePacket);
     await this.socketClose();
   }

@@ -396,8 +396,7 @@ class MDNS extends EventTarget {
       const ttl: number = (record as any).ttl;
       const flush: boolean = (record as any).flush;
 
-      const existingRecord = this.networkRecordCache.get(recordKey);
-      if ((flush && ttl !== 0) || typeof existingRecord === 'undefined') {
+      if ((flush || !this.networkRecordCache.has(recordKey)) && ttl !== 0) {
         this.networkRecordCache.set(recordKey, { record, timestamp: new Date().getTime() })
       }
 
@@ -537,22 +536,21 @@ class MDNS extends EventTarget {
 
   private networkRecordCacheTimerReset() {
     this.networkRecordCacheTimer.cancel();
-    const sortedCache = [...this.networkRecordCache.entries()].sort((a, b) =>
-      ((a[1].record as any).ttl + a[1].timestamp) -
-      ((b[1].record as any).ttl + b[1].timestamp)
+    const sortedCache = [...this.networkRecordCache.values()].sort((a, b) =>
+      ((a.record as any).ttl + a.timestamp) -
+      ((b.record as any).ttl + b.timestamp)
     );
     const fastestExpiringRecordPOJO = sortedCache.at(0);
     if (typeof fastestExpiringRecordPOJO !== 'undefined') {
-      const [fastestExpiringRecordKey, fastestExpiringRecord] = fastestExpiringRecordPOJO;
+      const { record, timestamp } = fastestExpiringRecordPOJO;
       this.networkRecordCacheTimer = new Timer(() => {
-        this.networkRecordCache.delete(fastestExpiringRecordKey);
         // TODO: Requery missing packets
-        const fastestExpiringRecordEdited = fastestExpiringRecord.record;
-        (fastestExpiringRecordEdited as any).ttl = 0;
-        (fastestExpiringRecordEdited as any).flush = true;
-        this.processIncomingResourceRecords([fastestExpiringRecordEdited])
+        const fastestExpiringRecord = record;
+        (fastestExpiringRecord as any).ttl = 0;
+        (fastestExpiringRecord as any).flush = true;
+        this.processIncomingResourceRecords([fastestExpiringRecord]);
         this.networkRecordCacheTimerReset();
-      }, ((fastestExpiringRecord.record as any).ttl * 1000) + fastestExpiringRecord.timestamp - new Date().getTime())
+      }, ((record as any).ttl * 1000) + timestamp - new Date().getTime())
     }
   }
 
@@ -586,6 +584,7 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
+    // this.networkRecordCacheTimer.cancel();
     await this.sendPacket(goodbyePacket);
     await this.socketClose();
   }

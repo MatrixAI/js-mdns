@@ -20,7 +20,6 @@ import {
   QType,
   RClass,
   RCode,
-  ResourceRecord,
   RType,
 } from '@/dns';
 
@@ -59,9 +58,11 @@ const FC_AAAA_RECORD = fc.record({
   ttl: FC_UINT32,
   data: fc
     .ipV6()
+    .filter((ip) => ip.indexOf('.') === -1)
     .chain((ip) =>
-      fc.constant(parseIPv6(generateIPv6('0:0:0:0:0:0:0:0')).data),
-    ),
+      fc.constant(parseIPv6(generateIPv6(ip)).data),
+    )
+    // filter out mapped ipv6 addresses
 });
 
 const FC_A_RECORD = fc.record({
@@ -88,7 +89,10 @@ const FC_TXT_RECORD = fc.record({
   flush: fc.boolean(),
   class: fc.constant(RClass.IN),
   ttl: FC_UINT32,
-  data: fc.dictionary(fc.unicodeString(), fc.unicodeString()),
+  data: fc.dictionary(
+    fc.unicodeString({ minLength: 1 }).filter((str) => str.indexOf("=") === -1 && str !== "__proto__"),
+    fc.unicodeString().filter((str) => str.indexOf("=") === -1)
+  ),
 });
 
 const FC_SRV_RECORD = fc.record({

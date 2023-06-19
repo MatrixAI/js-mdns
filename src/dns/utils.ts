@@ -514,9 +514,10 @@ function parseTXTRecordData(
       inputBuffer.subarray(1, textLength + 1),
     );
 
-    const [key, value] = decodedPair.split('=');
-
-    txtAttributes[key] = typeof value !== 'undefined' ? value : '';
+    const [key, value] = decodedPair.split('=', 2);
+    if (key !== '__proto__') {
+      txtAttributes[key] = typeof value !== 'undefined' ? value : '';
+    }
     inputBuffer = inputBuffer.subarray(textLength + 1);
   }
 

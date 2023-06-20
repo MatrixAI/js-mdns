@@ -1,14 +1,15 @@
 import { Timer } from "@matrixai/timer";
-import { QClass, QType, QuestionRecord, ResourceRecord } from "./dns";
+import { QClass, QType, QuestionRecord, ResourceRecord, RType } from "./dns";
+import { MDNSCacheExpiredEvent } from "./events";
 import { createResourceRecordIdGenerator, ResourceRecordHeaderId, ResourceRecordId } from "./ids";
+import { Hostname } from "./types";
 
-class MDNSCache {
+class MDNSCache extends EventTarget {
   private resourceRecordIdGenerator: () => ResourceRecordId = createResourceRecordIdGenerator();
   private resourceRecordCache: Map<ResourceRecordId, ResourceRecord> = new Map();
   private resourceRecordCacheByHeaderId: Map<ResourceRecordHeaderId, ResourceRecordId[]> = new Map();
-  /*
-    * This is by timestamp + ttl. This is only sorted when the timer is reset!
-    */
+  private resourceRecordCacheByHostname: Map<Hostname, ResourceRecordId[]> = new Map();
+  // This is by timestamp + ttl. This is only sorted when the timer is reset!
   private resourceRecordCacheByTimestamp: ResourceRecordId[] = [];
   private resourceRecordCacheTimestamps: Map<ResourceRecordId, number> = new Map()
   private resourceRecordCacheTimer: Timer = new Timer();
@@ -22,6 +23,22 @@ class MDNSCache {
       this.resourceRecordCache.set(resourceRecordId, record);
       this.resourceRecordCacheTimestamps.set(resourceRecordId, new Date().getTime());
       this.resourceRecordCacheByTimestamp.push(resourceRecordId);
+
+      let foundHostName: Hostname | undefined;
+      if (record.type === RType.PTR && record.name !== '_services._dns-sd._udp.local') {
+        foundHostName = record.data as Hostname;
+      }
+      else if (record.type === RType.SRV) {
+        foundHostName = record.data.target as Hostname;
+      }
+      if (typeof foundHostName !== "undefined") {
+        let resourceRecordCacheByHostname = this.resourceRecordCacheByHostname.get(foundHostName);
+        if (typeof resourceRecordCacheByHostname === "undefined") {
+          resourceRecordCacheByHostname = [];
+          this.resourceRecordCacheByHostname.set(foundHostName, resourceRecordCacheByHostname);
+        }
+        resourceRecordCacheByHostname.push(resourceRecordId);
+      }
 
       const relevantHeaders: (QuestionRecord | ResourceRecord)[] = [
         record,
@@ -87,6 +104,26 @@ class MDNSCache {
       const resourceRecordIds = this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId) ?? [];
       const deletedResourceRecordIds: ResourceRecordId[] = [];
       for (const resourceRecordId of resourceRecordIds) {
+
+        // Delete from resourceRecordCacheByHostname
+        const foundResourceRecord = this.resourceRecordCache.get(resourceRecordId);
+        if (typeof foundResourceRecord !== "undefined") {
+          let foundHostName: Hostname | undefined;
+          if (foundResourceRecord.type === RType.PTR && foundResourceRecord.name !== '_services._dns-sd._udp.local') {
+            foundHostName = foundResourceRecord.data as Hostname;
+          }
+          else if (foundResourceRecord.type === RType.SRV) {
+            foundHostName = foundResourceRecord.data.target as Hostname;
+          }
+          if (typeof foundHostName !== "undefined") {
+            const resourceRecordCacheByHostname = this.resourceRecordCacheByHostname.get(foundHostName) ?? [];
+            resourceRecordCacheByHostname.splice(resourceRecordCacheByHostname.indexOf(resourceRecordId), 1);
+            if (resourceRecordCacheByHostname.length === 0) {
+              this.resourceRecordCacheByHostname.delete(foundHostName);
+            }
+          }
+        }
+
         this.resourceRecordCache.delete(resourceRecordId);
         this.resourceRecordCacheTimestamps.delete(resourceRecordId);
         const resourceRecordCacheByHeaderId = this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId);
@@ -119,6 +156,15 @@ class MDNSCache {
     return resourceRecords;
   }
 
+  public getHostnameRelatedResourceRecords(hostname: Hostname): ResourceRecord[] {
+    const resourceRecordIds = this.resourceRecordCacheByHostname.get(hostname) ?? [];
+    return resourceRecordIds.flatMap((resourceRecordId) => this.resourceRecordCache.get(resourceRecordId) ?? []);
+  }
+
+  public has(records: QuestionRecord | ResourceRecord): boolean {
+    const resourceRecordHeaderId = MDNSCache.toRecordHeaderId(records);
+    return this.resourceRecordCacheByHeaderId.has(resourceRecordHeaderId);
+  }
 
   private resourceRecordCacheTimerReset() {
     this.resourceRecordCacheTimer.cancel();
@@ -128,17 +174,16 @@ class MDNSCache {
       const record = this.resourceRecordCache.get(fastestExpiringRecordId);
       const timestamp = this.resourceRecordCacheTimestamps.get(fastestExpiringRecordId);
       if (typeof timestamp !== 'undefined' && typeof record !== 'undefined') {
-        const delayMilis = ((record as any).ttl * 1000) + timestamp - new Date().getTime();
+        // RFC 6762 8.4. TTL always has a 1 second floor
+        const ttl = (record as any).ttl !== 0 ? (record as any).ttl : 1;
+        const delayMilis = (ttl * 1000) + timestamp - new Date().getTime();
         this.resourceRecordCacheTimer = new Timer(async () => {
           // TODO: Requery missing packets
           // TODO: Delete Records and Parse
           this.delete(record);
-          // const fastestExpiringRecord = record;
-          // (fastestExpiringRecord as any).ttl = 0;
-          // (fastestExpiringRecord as any).flush = true;
-          // await this.processIncomingResourceRecords([fastestExpiringRecord]);
+          this.dispatchEvent(new MDNSCacheExpiredEvent({ detail: record }));
           this.resourceRecordCacheTimerReset();
-        }, delayMilis < 0 ? 0 : delayMilis);
+        }, delayMilis > 0 ? delayMilis : 0);
       }
     }
   }
@@ -157,7 +202,7 @@ class MDNSCache {
     };
   }
 
-  resourceRecordCacheByTimestampInsertionSort() {
+  private resourceRecordCacheByTimestampInsertionSort() {
     for (let i = 1; i < this.resourceRecordCacheByTimestamp.length; i++) {
       let currentId = this.resourceRecordCacheByTimestamp[i];
       let currentElement = this.resourceRecordCacheTimestamps.get(currentId);
@@ -182,3 +227,5 @@ class MDNSCache {
     }
   }
 }
+
+export default MDNSCache;

@@ -20,7 +20,6 @@ import * as utils from './utils';
 import * as errors from './errors';
 import {
   generatePacket,
-  isStringRecord,
   PacketOpCode,
   PacketType,
   parsePacket,
@@ -31,6 +30,7 @@ import {
   RType,
 } from './dns';
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
+import MDNSCache from './MDNSCache';
 
 const MDNS_TTL = 255;
 
@@ -49,8 +49,7 @@ class MDNS extends EventTarget {
   protected localRecordCacheDirty = true;
 
   // TODO: cache needs to be LRU to prevent DDoS
-  protected networkRecordCache: Map<string, { record: ResourceRecord, timestamp: number }> = new Map();
-  protected networkRecordCacheTimer: Timer = new Timer();
+  protected networkRecordCache: MDNSCache = new MDNSCache();
 
   protected boundHosts: Host[] = [];
 
@@ -369,8 +368,16 @@ class MDNS extends EventTarget {
     // [0] is the service fdqn, [1] is if it is to be removed (flush && ttl === 0)
     const allDirtiedServiceFdqns: Map<string, boolean> = new Map();
 
-    for (const record of resourceRecords) {
+    // TODO: shared records do not need flush to be set for an update.
+    // Set all appendable network resource records
+    const appendedResourceRecords = resourceRecords.filter((record) => (record as any).ttl !== 0);
+    this.networkRecordCache.set(appendedResourceRecords);
 
+    // this is for the purpose that ipv4 is flushed. As we return the hosts as an array in the service event, this is useful for getting the freshest information.
+    let flushedIpv4: Hostname | undefined;
+    let flushedIpv6: Hostname | undefined;
+
+    for (const record of resourceRecords) {
       const dirtiedServiceFdqns: string[] = [];
 
       // Processing records to find fdqns
@@ -382,32 +389,29 @@ class MDNS extends EventTarget {
       ) {
         dirtiedServiceFdqns.push(record.data);
       } else if (record.type === RType.A || record.type === RType.AAAA) {
-        const externalRecords = [...this.networkRecordCache.values()].map(wrapper => wrapper.record);
-        const srvRecords = externalRecords.filter(
-          (externalRecord) =>
-            externalRecord.type === RType.SRV &&
-            externalRecord.data.target === record.name,
-        );
-        dirtiedServiceFdqns.push(...srvRecords.map((srvRecord) => srvRecord.name));
+        const relatedResourceRecords = this.networkRecordCache.getHostnameRelatedResourceRecords(record.name as Hostname);
+        for (const relatedResourceRecord of relatedResourceRecords) {
+          if (relatedResourceRecord.type === RType.SRV) {
+            dirtiedServiceFdqns.push(relatedResourceRecord.name);
+          }
+        }
+        if (record.type === RType.A && record.flush) {
+          flushedIpv4 = record.name as Hostname;
+        }
+        else if (record.type === RType.AAAA && record.flush) {
+          flushedIpv6 = record.name as Hostname;
+        }
       }
 
-      // Adding Records
-      const recordKey = utils.toRecordKey(record);
-      const ttl: number = (record as any).ttl;
-      const flush: boolean = (record as any).flush;
-
-      if ((flush || !this.networkRecordCache.has(recordKey)) && ttl !== 0) {
-        this.networkRecordCache.set(recordKey, { record, timestamp: new Date().getTime() })
-      }
-
+      // Setting dirtied fdqn
       for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
         if (allDirtiedServiceFdqns.get(dirtiedServiceFdqn) !== true) {
-          allDirtiedServiceFdqns.set(dirtiedServiceFdqn, flush && ttl === 0);
+          allDirtiedServiceFdqns.set(dirtiedServiceFdqn, (record as any).ttl === 0);
         }
       }
     }
 
-    // processing dirtied services
+    // Processing dirtied service fdqns
     const allRemainingQuestions: QuestionRecord[] = [];
 
     for (const [dirtiedServiceFdqn, dirtiedServiceFdqnRemoved] of allDirtiedServiceFdqns) {
@@ -425,7 +429,8 @@ class MDNS extends EventTarget {
         class: QClass.IN,
         unicast: false
       });
-      let responseRecords = this.networkRecordCacheGet([...remainingQuestions.values()]);
+      // TODO: Sort by latest inserted first in case shared record
+      let responseRecords = this.networkRecordCache.get([...remainingQuestions.values()]);
       for (const responseRecord of responseRecords) {
         remainingQuestions.delete(responseRecord.type as number as QType);
         if (responseRecord.type === RType.TXT) {
@@ -456,14 +461,14 @@ class MDNS extends EventTarget {
         class: QClass.IN,
         unicast: false
       });
-      responseRecords = this.networkRecordCacheGet([...remainingQuestions.values()]);
+      responseRecords = this.networkRecordCache.get([...remainingQuestions.values()]);
       for (const responseRecord of responseRecords) {
         remainingQuestions.delete(responseRecord.type as number as QType);
-        if (responseRecord.type === RType.A) {
-          partialService.ipv4 = responseRecord.data as Host;
-        }
-        else if (responseRecord.type === RType.AAAA) {
-          partialService.ipv6 = responseRecord.data as Host;
+        if (responseRecord.type === RType.A || responseRecord.type === RType.AAAA) {
+          if (!Array.isArray(partialService.hosts)) {
+            partialService.hosts = [];
+          }
+          partialService.hosts.push(responseRecord.data as Host);
         }
       }
       if (utils.isService(partialService)) {
@@ -480,16 +485,10 @@ class MDNS extends EventTarget {
     }
 
     // Cleanup removed records
-    for (const record of resourceRecords) {
-      const ttl: number = (record as any).ttl;
-      const flush: boolean = (record as any).flush;
-      if (flush && ttl === 0) {
-        this.networkRecordCacheRemove(record);
-      }
-    }
-
-    // Reset the cache timer after all records have been processed
-    this.networkRecordCacheTimerReset();
+    const flushedResourceRecords = resourceRecords.filter((record) => (record as any).flush === 0);
+    this.networkRecordCache.delete(flushedResourceRecords);
+    const removedResourceRecords = resourceRecords.filter((record) => (record as any).ttl === 0);
+    this.networkRecordCache.set(removedResourceRecords.concat(flushedResourceRecords));
 
     if (allRemainingQuestions.length !== 0) {
       await this.sendPacket({
@@ -504,53 +503,6 @@ class MDNS extends EventTarget {
         additionals: [],
         authorities: [],
       })
-    }
-  }
-
-  private networkRecordCacheRemove(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]) {
-    if (!Array.isArray(records)) records = [records];
-    for (const recordKeys of this.networkRecordCacheGet(records).map(record => utils.toRecordKey(record))) {
-      this.networkRecordCache.delete(recordKeys);
-    }
-    this.networkRecordCacheTimerReset();
-  }
-
-  private networkRecordCacheGet(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]): ResourceRecord[] {
-    if (!Array.isArray(records)) records = [records];
-    const resourceRecords: ResourceRecord[] = [];
-    for (const record of records) {
-      if ((record as any).class === QClass.ANY || (record as any).type === QType.ANY) {
-        // TODO: We need to be able to use an insertion sorted array instead of sorting the map everytime as it is inefficient.
-        resourceRecords.push(...[...this.networkRecordCache.values()].filter(wrapper => (
-          (record.name === wrapper.record.name) &&
-          ((record as any).class === QClass.ANY || (wrapper.record as any).class === (record as any).class) &&
-          (record.type === QType.ANY || (wrapper.record as any).type === record.type)
-        )).map(wrapper => wrapper.record));
-        continue;
-      }
-      const recordKey = utils.toRecordKey(record);
-      resourceRecords.push(...[this.networkRecordCache.get(recordKey)?.record ?? []].flat());
-    }
-    return resourceRecords;
-  }
-
-  private networkRecordCacheTimerReset() {
-    this.networkRecordCacheTimer.cancel();
-    const sortedCache = [...this.networkRecordCache.values()].sort((a, b) =>
-      ((a.record as any).ttl + a.timestamp) -
-      ((b.record as any).ttl + b.timestamp)
-    );
-    const fastestExpiringRecordPOJO = sortedCache.at(0);
-    if (typeof fastestExpiringRecordPOJO !== 'undefined') {
-      const { record, timestamp } = fastestExpiringRecordPOJO;
-      this.networkRecordCacheTimer = new Timer(async () => {
-        // TODO: Requery missing packets
-        const fastestExpiringRecord = record;
-        (fastestExpiringRecord as any).ttl = 0;
-        (fastestExpiringRecord as any).flush = true;
-        await this.processIncomingResourceRecords([fastestExpiringRecord]);
-        this.networkRecordCacheTimerReset();
-      }, ((record as any).ttl * 1000) + timestamp - new Date().getTime())
     }
   }
 
@@ -584,7 +536,7 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-    this.networkRecordCacheTimer.cancel();
+    // TODO: stop the cache
     await this.sendPacket(goodbyePacket);
     await this.socketClose();
   }
@@ -601,6 +553,7 @@ class MDNS extends EventTarget {
   public registerService(serviceOptions: ServiceConstructor) {
     const service: Service = {
       hostname: this._hostname,
+      hosts: [],
       ...serviceOptions,
     };
 

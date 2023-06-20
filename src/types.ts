@@ -52,8 +52,7 @@ type ServiceConstructor = {
 
 type Service = {
   hostname: Hostname;
-  ipv4?: Host;
-  ipv6?: Host;
+  hosts: Host[];
 } & ServiceConstructor;
 
 export type {

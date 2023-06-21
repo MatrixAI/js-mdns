@@ -27,12 +27,12 @@ import {
   parsePacket,
   QClass,
   QType,
-  RClass,
   RCode,
   RType,
 } from './dns';
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import MDNSCache from './MDNSCache';
+import { toRecordHeaderId } from './ids';
 
 const MDNS_TTL = 255;
 
@@ -323,7 +323,7 @@ class MDNS extends EventTarget {
           );
         }
         for (const additionalResourceRecord of additionalResourceRecordCache) {
-          const additionalResourceRecordKey = utils.toRecordKey(
+          const additionalResourceRecordKey = toRecordHeaderId(
             additionalResourceRecord,
           );
           if (!additionalResourceRecords.has(additionalResourceRecordKey)) {

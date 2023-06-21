@@ -4,6 +4,7 @@ import { QClass, QType, QuestionRecord, CachableResourceRecord, RType } from "./
 import { MDNSCacheExpiredEvent } from "./events";
 import { createResourceRecordIdGenerator, ResourceRecordHeaderId, ResourceRecordId, toRecordHeaderId } from "./ids";
 import { Hostname } from "./types";
+import * as utils from './utils';
 
 interface MDNSCache extends CreateDestroy {}
 @CreateDestroy()
@@ -241,7 +242,11 @@ class MDNSCache extends EventTarget {
 
   private resourceRecordCacheTimerReset() {
     this.resourceRecordCacheTimer.cancel();
-    console.log(this.resourceRecordCacheByTimestampInsertionSort().map((id) => this.resourceRecordCache.get(id)));
+    utils.insertionSort(
+      this.resourceRecordCacheByExpiration,
+      (a, b) => ((this.resourceRecordCacheTimestamps.get(a) ?? 0) + (this.resourceRecordCache.get(a)?.ttl ?? 0) * 1000) -
+      ((this.resourceRecordCacheTimestamps.get(b) ?? 0) + (this.resourceRecordCache.get(b)?.ttl ?? 0) * 1000)
+    );
     const fastestExpiringRecordId = this.resourceRecordCacheByExpiration.at(0);
     if (fastestExpiringRecordId != null) {
       const record = this.resourceRecordCache.get(fastestExpiringRecordId);
@@ -258,32 +263,6 @@ class MDNSCache extends EventTarget {
         }, delayMilis > 0 ? delayMilis : 0);
       }
     }
-  }
-
-  private resourceRecordCacheByTimestampInsertionSort() {
-    for (let i = 1; i < this.resourceRecordCacheByExpiration.length; i++) {
-      let currentId = this.resourceRecordCacheByExpiration[i];
-      let currentElement = this.resourceRecordCacheTimestamps.get(currentId);
-      if (currentElement == null) {
-        continue;
-      }
-      let lastIndex = i - 1;
-      let lastIndexElement = this.resourceRecordCacheTimestamps.get(this.resourceRecordCacheByExpiration[lastIndex]);
-      if (lastIndexElement == null) {
-        continue;
-      }
-
-      while (lastIndex >= 0 && lastIndexElement > currentElement) {
-        this.resourceRecordCacheByExpiration[lastIndex + 1] = this.resourceRecordCacheByExpiration[lastIndex];
-        lastIndex--;
-        lastIndexElement = this.resourceRecordCacheTimestamps.get(this.resourceRecordCacheByExpiration[lastIndex]);
-        if (lastIndexElement == null) {
-          break;
-        }
-      }
-      this.resourceRecordCacheByExpiration[lastIndex + 1] = currentId;
-    }
-    return this.resourceRecordCacheByExpiration
   }
 }
 

@@ -1,3 +1,5 @@
+import { OPTRecord, ResourceRecord } from "./dns";
+
 /**
  * Opaque types are wrappers of existing types
  * that require smart constructors
@@ -52,11 +54,11 @@ type ServiceConstructor = {
 
 type Service = {
   hostname: Hostname;
-  ipv4?: Host;
-  ipv6?: Host;
+  hosts: Host[];
 } & ServiceConstructor;
 
 export type {
+  Opaque,
   Callback,
   PromiseDeconstructed,
   Host,

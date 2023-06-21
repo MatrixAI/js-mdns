@@ -77,12 +77,15 @@ const enum QType { // RFC 1035 3.2.2. 3.2.3.
   ANY = 255,
 }
 
-type ResourceRecord =
-  | StringRecord
-  | TXTRecord
-  | SRVRecord
-  | OPTRecord
-  | NSECRecord;
+type CachableResourceRecord =
+| StringRecord
+| TXTRecord
+| SRVRecord
+| NSECRecord;
+
+
+type ResourceRecord = CachableResourceRecord | OPTRecord;
+
 
 const enum RType { // RFC 1035 3.2.2.
   A = 1,
@@ -130,16 +133,18 @@ type SRVRecordValue = {
   weight: number;
 };
 
-// This will have to be fleshed out later
-type OPTRecord = {
-  type: RType.OPT;
+type OPTRecord = BaseResourceRecord<
+  RType.OPT,
+  any[]
+> & {
   name: '0';
+  ttl: 0;
+  flush: false;
 
   udpPayloadSize: number; // RFC 6891 6.1.2. Class is used to denote "requestor's UDP payload size"
   extendedRCode: number; // RFC 6891 6.1.3. TTL is used to denote "extended RCODE and flags". First 8 bits are the extended RCODE.
   ednsVersion: number; // RFC 6891 6.1.3. Proceeding 8 bits are the Version.
   flags: number; // RFC 6891 6.1.4. Proceeding bit is the DO bit. For DNSSEC OK [RFC3225]. This is unneeded for mDNS. The proceeding 15 bits are set to zero and ignored.
-  data: any[]; // RFC 6891 6.1.2. This makes up the RDATA field. Each option consists of an option-code, length of option-data in octets, and option-data.
 };
 
 type NSECRecord = BaseResourceRecord<
@@ -160,6 +165,7 @@ export type {
   PacketHeader,
   PacketFlags,
   QuestionRecord,
+  CachableResourceRecord,
   ResourceRecord,
   BaseResourceRecord,
   StringRecord,

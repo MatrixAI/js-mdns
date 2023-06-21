@@ -1,6 +1,7 @@
 import { IdInternal, IdRandom, IdSortable } from "@matrixai/id";
-import { ResourceRecordId, ResourceRecordIdEncoded, TaskId, TaskIdEncoded } from "./types";
+import { ResourceRecordHeaderId, ResourceRecordId, ResourceRecordIdEncoded, TaskId, TaskIdEncoded } from "./types";
 import crypto from "crypto";
+import { QuestionRecord, ResourceRecord } from "@/dns";
 
 /**
  * Generates TaskId
@@ -79,13 +80,36 @@ function encodeResourceRecordId(certId: ResourceRecordId): ResourceRecordIdEncod
   return certId.toBuffer().toString('hex') as ResourceRecordIdEncoded;
 }
 
+/**
+ * Converts `ResourceRecord` or `QuestionRecord` to `ResourceRecordHeaderId`
+ */
+function toRecordHeaderId(record: ResourceRecord | QuestionRecord): ResourceRecordHeaderId {
+  return [record.name, record.type, record.class].join('\u0000') as ResourceRecordHeaderId;
+}
+
+/**
+ * Converts `ResourceRecordHeaderId` to `QuestionRecord`
+ */
+function fromRecordHeaderId(key: ResourceRecordHeaderId): QuestionRecord {
+  let name, type, qclass;
+  [name, type, qclass] = key.split('\u0000');
+  return {
+    name,
+    type: parseInt(type),
+    class: parseInt(qclass),
+    unicast: false,
+  };
+}
+
 export {
   createTaskIdGenerator,
   encodeTaskId,
   decodeTaskId,
   encodeResourceRecordId,
   decodeResourceRecordId,
-  createResourceRecordIdGenerator
+  createResourceRecordIdGenerator,
+  toRecordHeaderId,
+  fromRecordHeaderId,
 }
 
 export * from './types';

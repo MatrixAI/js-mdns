@@ -5,7 +5,9 @@ import type {
   Service,
   ServiceConstructor,
 } from './types';
-import type {
+import {
+  CachableResourceRecord,
+  isCachableResourceRecord,
   Packet,
   QuestionRecord,
   ResourceRecord,
@@ -370,7 +372,7 @@ class MDNS extends EventTarget {
 
     // TODO: shared records do not need flush to be set for an update.
     // Set all appendable network resource records
-    const appendedResourceRecords = resourceRecords.filter((record) => (record as any).ttl !== 0);
+    const appendedResourceRecords = resourceRecords.filter((record): record is CachableResourceRecord => isCachableResourceRecord(record) && record.ttl !== 0);
     this.networkRecordCache.set(appendedResourceRecords);
 
     // this is for the purpose that ipv4 is flushed. As we return the hosts as an array in the service event, this is useful for getting the freshest information.
@@ -485,9 +487,9 @@ class MDNS extends EventTarget {
     }
 
     // Cleanup removed records
-    const flushedResourceRecords = resourceRecords.filter((record) => (record as any).flush === 0);
+    const flushedResourceRecords = resourceRecords.filter((record): record is CachableResourceRecord => isCachableResourceRecord(record) && record.flush);
     this.networkRecordCache.delete(flushedResourceRecords);
-    const removedResourceRecords = resourceRecords.filter((record) => (record as any).ttl === 0);
+    const removedResourceRecords = resourceRecords.filter((record): record is CachableResourceRecord => isCachableResourceRecord(record) && record.ttl === 0);
     this.networkRecordCache.set(removedResourceRecords.concat(flushedResourceRecords));
 
     if (allRemainingQuestions.length !== 0) {

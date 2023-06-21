@@ -1,20 +1,31 @@
+import { CreateDestroy } from "@matrixai/async-init/dist/CreateDestroy";
 import { Timer } from "@matrixai/timer";
-import { QClass, QType, QuestionRecord, ResourceRecord, RType } from "./dns";
+import { QClass, QType, QuestionRecord, CachableResourceRecord, RType } from "./dns";
 import { MDNSCacheExpiredEvent } from "./events";
-import { createResourceRecordIdGenerator, ResourceRecordHeaderId, ResourceRecordId } from "./ids";
+import { createResourceRecordIdGenerator, ResourceRecordHeaderId, ResourceRecordId, toRecordHeaderId } from "./ids";
 import { Hostname } from "./types";
 
+interface MDNSCache extends CreateDestroy {}
+@CreateDestroy()
 class MDNSCache extends EventTarget {
   private resourceRecordIdGenerator: () => ResourceRecordId = createResourceRecordIdGenerator();
-  private resourceRecordCache: Map<ResourceRecordId, ResourceRecord> = new Map();
+  private resourceRecordCache: Map<ResourceRecordId, CachableResourceRecord> = new Map();
   private resourceRecordCacheByHeaderId: Map<ResourceRecordHeaderId, ResourceRecordId[]> = new Map();
   private resourceRecordCacheByHostname: Map<Hostname, ResourceRecordId[]> = new Map();
   // This is by timestamp + ttl. This is only sorted when the timer is reset!
-  private resourceRecordCacheByTimestamp: ResourceRecordId[] = [];
+  private resourceRecordCacheByExpiration: ResourceRecordId[] = [];
   private resourceRecordCacheTimestamps: Map<ResourceRecordId, number> = new Map()
   private resourceRecordCacheTimer: Timer = new Timer();
 
-  public set(records: ResourceRecord | ResourceRecord[]): void {
+
+  public static createMDNSCache() {
+    return new this();
+  }
+  public async destroy() {
+    this.resourceRecordCacheTimer.cancel();
+  }
+
+  public set(records: CachableResourceRecord | CachableResourceRecord[]): void {
     if (!Array.isArray(records)) {
       return this.set([records]);
     }
@@ -22,7 +33,7 @@ class MDNSCache extends EventTarget {
       const resourceRecordId = this.resourceRecordIdGenerator();
       this.resourceRecordCache.set(resourceRecordId, record);
       this.resourceRecordCacheTimestamps.set(resourceRecordId, new Date().getTime());
-      this.resourceRecordCacheByTimestamp.push(resourceRecordId);
+      this.resourceRecordCacheByExpiration.push(resourceRecordId);
 
       let foundHostName: Hostname | undefined;
       if (record.type === RType.PTR && record.name !== '_services._dns-sd._udp.local') {
@@ -31,7 +42,7 @@ class MDNSCache extends EventTarget {
       else if (record.type === RType.SRV) {
         foundHostName = record.data.target as Hostname;
       }
-      if (typeof foundHostName !== "undefined") {
+      if (foundHostName != null) {
         let resourceRecordCacheByHostname = this.resourceRecordCacheByHostname.get(foundHostName);
         if (typeof resourceRecordCacheByHostname === "undefined") {
           resourceRecordCacheByHostname = [];
@@ -40,7 +51,7 @@ class MDNSCache extends EventTarget {
         resourceRecordCacheByHostname.push(resourceRecordId);
       }
 
-      const relevantHeaders: (QuestionRecord | ResourceRecord)[] = [
+      const relevantHeaders: (QuestionRecord | CachableResourceRecord)[] = [
         record,
         {
           name: record.name,
@@ -51,7 +62,7 @@ class MDNSCache extends EventTarget {
         {
           name: record.name,
           type: QType.ANY,
-          class: (record as any).class as QClass,
+          class: record.class as number as QClass,
           unicast: false
         },
         {
@@ -63,10 +74,11 @@ class MDNSCache extends EventTarget {
       ];
 
       for (const header of relevantHeaders) {
-        let array = this.resourceRecordCacheByHeaderId.get(MDNSCache.toRecordHeaderId(header));
-        if (typeof array === "undefined") {
+        const headerId = toRecordHeaderId(header);
+        let array = this.resourceRecordCacheByHeaderId.get(headerId);
+        if (!Array.isArray(array)) {
           array = [];
-          this.resourceRecordCacheByHeaderId.set(MDNSCache.toRecordHeaderId(record), array);
+          this.resourceRecordCacheByHeaderId.set(headerId, array);
         }
         array.push(resourceRecordId);
       }
@@ -74,7 +86,7 @@ class MDNSCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
-  public delete(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]) {
+  public delete(records: (QuestionRecord | CachableResourceRecord) | (QuestionRecord | CachableResourceRecord)[]) {
     if (!Array.isArray(records)) {
       return this.delete([records]);
     }
@@ -89,7 +101,7 @@ class MDNSCache extends EventTarget {
       {
         name: record.name,
         type: QType.ANY,
-        class: (record as any).class as QClass,
+        class: record.class as QClass,
         unicast: false
       },
       {
@@ -100,14 +112,14 @@ class MDNSCache extends EventTarget {
       }
     ]);
     for (const headers of relevantHeaders) {
-      const resourceRecordHeaderId = MDNSCache.toRecordHeaderId(headers);
+      const resourceRecordHeaderId = toRecordHeaderId(headers);
       const resourceRecordIds = this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId) ?? [];
       const deletedResourceRecordIds: ResourceRecordId[] = [];
       for (const resourceRecordId of resourceRecordIds) {
 
         // Delete from resourceRecordCacheByHostname
         const foundResourceRecord = this.resourceRecordCache.get(resourceRecordId);
-        if (typeof foundResourceRecord !== "undefined") {
+        if (foundResourceRecord != null) {
           let foundHostName: Hostname | undefined;
           if (foundResourceRecord.type === RType.PTR && foundResourceRecord.name !== '_services._dns-sd._udp.local') {
             foundHostName = foundResourceRecord.data as Hostname;
@@ -115,7 +127,7 @@ class MDNSCache extends EventTarget {
           else if (foundResourceRecord.type === RType.SRV) {
             foundHostName = foundResourceRecord.data.target as Hostname;
           }
-          if (typeof foundHostName !== "undefined") {
+          if (foundHostName != null) {
             const resourceRecordCacheByHostname = this.resourceRecordCacheByHostname.get(foundHostName) ?? [];
             resourceRecordCacheByHostname.splice(resourceRecordCacheByHostname.indexOf(resourceRecordId), 1);
             if (resourceRecordCacheByHostname.length === 0) {
@@ -128,7 +140,7 @@ class MDNSCache extends EventTarget {
         this.resourceRecordCacheTimestamps.delete(resourceRecordId);
         const resourceRecordCacheByHeaderId = this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId);
         resourceRecordCacheByHeaderId?.splice(resourceRecordCacheByHeaderId.indexOf(resourceRecordId), 1);
-        this.resourceRecordCacheByTimestamp.splice(this.resourceRecordCacheByTimestamp.indexOf(resourceRecordId), 1);
+        this.resourceRecordCacheByExpiration.splice(this.resourceRecordCacheByExpiration.indexOf(resourceRecordId), 1);
         deletedResourceRecordIds.push(resourceRecordId);
       }
       for (const deletedResourceRecordId of deletedResourceRecordIds) {
@@ -138,17 +150,78 @@ class MDNSCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
-  public get(records: (QuestionRecord | ResourceRecord) | (QuestionRecord | ResourceRecord)[]): ResourceRecord[] {
+  private deleteByResourceRecordId(resourceRecordIds: ResourceRecordId | ResourceRecordId[]) {
+    if (!Array.isArray(resourceRecordIds)) {
+      return this.deleteByResourceRecordId([resourceRecordIds]);
+    }
+    for (const resourceRecordId of resourceRecordIds) {
+      const foundResourceRecord = this.resourceRecordCache.get(resourceRecordId);
+      if (foundResourceRecord == null) continue;
+      // Delete from resourceRecordCacheByHostname
+      let foundHostName: Hostname | undefined;
+      if (foundResourceRecord.type === RType.PTR && foundResourceRecord.name !== '_services._dns-sd._udp.local') {
+        foundHostName = foundResourceRecord.data as Hostname;
+      }
+      else if (foundResourceRecord.type === RType.SRV) {
+        foundHostName = foundResourceRecord.data.target as Hostname;
+      }
+      if (foundHostName != null) {
+        const resourceRecordCacheByHostname = this.resourceRecordCacheByHostname.get(foundHostName) ?? [];
+        resourceRecordCacheByHostname.splice(resourceRecordCacheByHostname.indexOf(resourceRecordId), 1);
+        if (resourceRecordCacheByHostname.length === 0) {
+          this.resourceRecordCacheByHostname.delete(foundHostName);
+        }
+      }
+
+      // Delete from resourceRecordCacheByHeaderId
+      const relevantHeaders = [
+        foundResourceRecord,
+        {
+          name: foundResourceRecord.name,
+          type: foundResourceRecord.type as number as QType,
+          class: QClass.ANY,
+          unicast: false
+        },
+        {
+          name: foundResourceRecord.name,
+          type: QType.ANY,
+          class: foundResourceRecord.class as number as QClass,
+          unicast: false
+        },
+        {
+          name: foundResourceRecord.name,
+          type: QType.ANY,
+          class: QClass.ANY,
+          unicast: false
+        }
+      ];
+
+      for (const header of relevantHeaders) {
+        const resourceRecordHeaderId = toRecordHeaderId(header);
+        const resourceRecordCacheByHeaderId = this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId);
+        resourceRecordCacheByHeaderId?.splice(resourceRecordCacheByHeaderId.indexOf(resourceRecordId), 1);
+      }
+
+      // Delete from resourceRecordCache
+      this.resourceRecordCache.delete(resourceRecordId);
+      this.resourceRecordCacheTimestamps.delete(resourceRecordId);
+      this.resourceRecordCacheByExpiration.splice(this.resourceRecordCacheByExpiration.indexOf(resourceRecordId), 1);
+    }
+    this.resourceRecordCacheTimerReset();
+  }
+
+  public get(records: (QuestionRecord | CachableResourceRecord) | (QuestionRecord | CachableResourceRecord)[]): CachableResourceRecord[] {
     if (!Array.isArray(records)) {
       return this.get([records]);
     }
-    const resourceRecords: ResourceRecord[] = [];
+
+    const resourceRecords: CachableResourceRecord[] = [];
     for (const record of records) {
-      const resourceRecordHeaderId = MDNSCache.toRecordHeaderId(record);
+      const resourceRecordHeaderId = toRecordHeaderId(record);
       const resourceRecordIds = this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId) ?? [];
       for (const resourceRecordId of resourceRecordIds) {
         const resourceRecord = this.resourceRecordCache.get(resourceRecordId);
-        if (typeof resourceRecord !== "undefined") {
+        if (resourceRecord != null) {
           resourceRecords.push(resourceRecord);
         }
       }
@@ -156,75 +229,61 @@ class MDNSCache extends EventTarget {
     return resourceRecords;
   }
 
-  public getHostnameRelatedResourceRecords(hostname: Hostname): ResourceRecord[] {
+  public getHostnameRelatedResourceRecords(hostname: Hostname): CachableResourceRecord[] {
     const resourceRecordIds = this.resourceRecordCacheByHostname.get(hostname) ?? [];
     return resourceRecordIds.flatMap((resourceRecordId) => this.resourceRecordCache.get(resourceRecordId) ?? []);
   }
 
-  public has(records: QuestionRecord | ResourceRecord): boolean {
-    const resourceRecordHeaderId = MDNSCache.toRecordHeaderId(records);
+  public has(records: QuestionRecord | CachableResourceRecord): boolean {
+    const resourceRecordHeaderId = toRecordHeaderId(records);
     return this.resourceRecordCacheByHeaderId.has(resourceRecordHeaderId);
   }
 
   private resourceRecordCacheTimerReset() {
     this.resourceRecordCacheTimer.cancel();
-    this.resourceRecordCacheByTimestampInsertionSort();
-    const fastestExpiringRecordId = this.resourceRecordCacheByTimestamp.at(0);
-    if (typeof fastestExpiringRecordId !== 'undefined') {
+    console.log(this.resourceRecordCacheByTimestampInsertionSort().map((id) => this.resourceRecordCache.get(id)));
+    const fastestExpiringRecordId = this.resourceRecordCacheByExpiration.at(0);
+    if (fastestExpiringRecordId != null) {
       const record = this.resourceRecordCache.get(fastestExpiringRecordId);
       const timestamp = this.resourceRecordCacheTimestamps.get(fastestExpiringRecordId);
-      if (typeof timestamp !== 'undefined' && typeof record !== 'undefined') {
+      if (timestamp != null && record != null) {
         // RFC 6762 8.4. TTL always has a 1 second floor
-        const ttl = (record as any).ttl !== 0 ? (record as any).ttl : 1;
+        const ttl = record.ttl !== 0 ? record.ttl : 1;
         const delayMilis = (ttl * 1000) + timestamp - new Date().getTime();
         this.resourceRecordCacheTimer = new Timer(async () => {
           // TODO: Requery missing packets
           // TODO: Delete Records and Parse
-          this.delete(record);
           this.dispatchEvent(new MDNSCacheExpiredEvent({ detail: record }));
-          this.resourceRecordCacheTimerReset();
+          this.deleteByResourceRecordId(fastestExpiringRecordId);
         }, delayMilis > 0 ? delayMilis : 0);
       }
     }
   }
 
-  static toRecordHeaderId(record: ResourceRecord | QuestionRecord): ResourceRecordHeaderId {
-    return [record.name, record.type, (record as any).class].join('\u0000') as ResourceRecordHeaderId;
-  }
-  static fromRecordHeaderId(key: ResourceRecordHeaderId): QuestionRecord {
-    let name, type, qclass;
-    [name, type, qclass] = key.split('\u0000');
-    return {
-      name,
-      type: parseInt(type),
-      class: parseInt(qclass),
-      unicast: false,
-    };
-  }
-
   private resourceRecordCacheByTimestampInsertionSort() {
-    for (let i = 1; i < this.resourceRecordCacheByTimestamp.length; i++) {
-      let currentId = this.resourceRecordCacheByTimestamp[i];
+    for (let i = 1; i < this.resourceRecordCacheByExpiration.length; i++) {
+      let currentId = this.resourceRecordCacheByExpiration[i];
       let currentElement = this.resourceRecordCacheTimestamps.get(currentId);
-      if (typeof currentElement === 'undefined') {
+      if (currentElement == null) {
         continue;
       }
       let lastIndex = i - 1;
-      let lastIndexElement = this.resourceRecordCacheTimestamps.get(this.resourceRecordCacheByTimestamp[lastIndex]);
-      if (typeof lastIndexElement === 'undefined') {
+      let lastIndexElement = this.resourceRecordCacheTimestamps.get(this.resourceRecordCacheByExpiration[lastIndex]);
+      if (lastIndexElement == null) {
         continue;
       }
 
       while (lastIndex >= 0 && lastIndexElement > currentElement) {
-        this.resourceRecordCacheByTimestamp[lastIndex + 1] = this.resourceRecordCacheByTimestamp[lastIndex];
+        this.resourceRecordCacheByExpiration[lastIndex + 1] = this.resourceRecordCacheByExpiration[lastIndex];
         lastIndex--;
-        lastIndexElement = this.resourceRecordCacheTimestamps.get(this.resourceRecordCacheByTimestamp[lastIndex]);
-        if (typeof lastIndexElement === 'undefined') {
+        lastIndexElement = this.resourceRecordCacheTimestamps.get(this.resourceRecordCacheByExpiration[lastIndex]);
+        if (lastIndexElement == null) {
           break;
         }
       }
-      this.resourceRecordCacheByTimestamp[lastIndex + 1] = currentId;
+      this.resourceRecordCacheByExpiration[lastIndex + 1] = currentId;
     }
+    return this.resourceRecordCacheByExpiration
   }
 }
 

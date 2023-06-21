@@ -293,6 +293,8 @@ function resolvesZeroIP(host: Host): Host {
   }
 }
 
+
+
 // Default ResourceRecord ttl is 120 seconds
 function toHostResourceRecords(
   hosts: Host[],
@@ -372,19 +374,19 @@ function toServiceResourceRecords(
   });
 }
 
-function toRecordKey(record: ResourceRecord | QuestionRecord): string {
-  return [record.name, record.type, (record as any).class].join('\u0000');
-}
-
-function fromRecordKey(key: string): QuestionRecord {
-  let name, type, qclass;
-  [name, type, qclass] = key.split('\u0000');
-  return {
-    name,
-    type: parseInt(type),
-    class: parseInt(qclass),
-    unicast: false,
-  };
+function insertionSort<T>(
+  arr: T[],
+  compare: (a: T, b: T) => number,
+) {
+  for (let i = 1; i < arr.length; i++) {
+    const temp = arr[i];
+    let j = i - 1;
+    while (j >= 0 && compare(arr[j], temp) > 0) {
+      arr[j + 1] = arr[j];
+      j--;
+    }
+    arr[j + 1] = temp;
+  }
 }
 
 export {
@@ -408,6 +410,5 @@ export {
   toHostResourceRecords,
   isService,
   toServiceResourceRecords,
-  toRecordKey,
-  fromRecordKey,
+  insertionSort
 };

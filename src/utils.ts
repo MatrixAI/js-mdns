@@ -2,6 +2,7 @@ import type {
   Callback,
   Host,
   Hostname,
+  NetworkInterfaces,
   PromiseDeconstructed,
   Service,
 } from './types';
@@ -12,6 +13,7 @@ import type {
   QType,
 } from '@/dns';
 import dns from 'dns';
+import os from 'os';
 import { IPv4, IPv6, Validator } from 'ip-num';
 import { RType, RClass, SRVRecord, TXTRecord, QClass } from '@/dns';
 
@@ -171,6 +173,17 @@ async function resolveHost(
     host = await resolveHostname(host as Hostname);
     return resolveHost(host, resolveHostname);
   }
+}
+
+/**
+ * This gets the network interfaces from Node's os.
+ */
+function getNetworkInterfaces(): NetworkInterfaces {
+  return os.networkInterfaces();
+}
+
+function getHostname(): Hostname {
+  return os.hostname() as Hostname;
 }
 
 /**
@@ -401,6 +414,8 @@ export {
   toCanonicalIp,
   resolveHostname,
   resolveHost,
+  getNetworkInterfaces,
+  getHostname,
   promisify,
   promise,
   bufferWrap,

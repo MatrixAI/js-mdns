@@ -4,18 +4,11 @@ import type {
   Port,
   Service,
   ServiceConstructor,
+  NetworkInterface,
+  NetworkInterfaces
 } from './types';
-import {
-  CachableResourceRecord,
-  isCachableResourceRecord,
-  Packet,
-  QuestionRecord,
-  ResourceRecord,
-  StringRecord,
-} from './dns';
 import * as dgram from 'dgram';
-import os from 'os';
-import { CreateDestroyStartStop } from '@matrixai/async-init/dist/CreateDestroyStartStop';
+import { StartStop, ready } from '@matrixai/async-init/dist/StartStop';
 import { Timer } from '@matrixai/timer';
 import Logger from '@matrixai/logger';
 import * as utils from './utils';
@@ -33,6 +26,14 @@ import {
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import MDNSCache from './MDNSCache';
 import { toRecordHeaderId } from './ids';
+import {
+  CachableResourceRecord,
+  isCachableResourceRecord,
+  Packet,
+  QuestionRecord,
+  ResourceRecord,
+  StringRecord,
+} from './dns';
 
 const MDNS_TTL = 255;
 
@@ -40,80 +41,217 @@ const MDNS_TTL = 255;
 const HOSTNAME_RR_TTL = 120;
 const OTHER_RR_TTL = 4500;
 
-interface MDNS extends CreateDestroyStartStop {}
-@CreateDestroyStartStop(
-  new errors.ErrorMDNSRunning(),
-  new errors.ErrorMDNSDestroyed(),
-)
+interface MDNS extends StartStop {}
+@StartStop()
 class MDNS extends EventTarget {
+  protected logger: Logger;
+  protected resolveHostname: (hostname: Hostname) => Host | PromiseLike<Host>;
+  protected getNetworkInterfaces: () => NetworkInterfaces | PromiseLike<NetworkInterfaces>;
+
   protected services: Service[] = [];
   protected localRecordCache: ResourceRecord[] = [];
   protected localRecordCacheDirty = true;
-
   // TODO: cache needs to be LRU to prevent DDoS
   protected networkRecordCache: MDNSCache = new MDNSCache();
-
   protected boundHosts: Host[] = [];
-
   protected socket: dgram.Socket;
   protected _host: Host;
   protected _port: Port;
   protected _type: 'ipv4' | 'ipv6' | 'ipv4&ipv6';
-  protected _group: Host[];
+  protected _groups: Array<Host>;
   protected _hostname: Hostname;
-
-  protected logger: Logger;
-
-  protected resolveHostname: (hostname: Hostname) => Host | PromiseLike<Host>;
 
   protected socketBind: (port: number, host: string) => Promise<void>;
   protected socketClose: () => Promise<void>;
   protected socketSend: (...params: Array<any>) => Promise<number>;
 
-  public static createMDNS({
+  public constructor({
     resolveHostname = utils.resolveHostname,
-    logger = new Logger(`${this.name}`),
+    getNetworkInterfaces = utils.getNetworkInterfaces,
+    logger
   }: {
     resolveHostname?: (hostname: Hostname) => Host | PromiseLike<Host>;
+    getNetworkInterfaces: () => NetworkInterfaces | PromiseLike<NetworkInterfaces>;
     logger?: Logger;
   }) {
-    const mdns = new this({
-      resolveHostname,
-      logger,
-    });
-    return mdns;
-  }
-
-  public constructor({ resolveHostname, logger }) {
     super();
+    this.logger = logger ?? new Logger(this.constructor.name);
     this.resolveHostname = resolveHostname;
-    this.logger = logger;
+    this.getNetworkInterfaces = getNetworkInterfaces;
   }
 
-  // Starts the MDNS responder. This will work differently on different platforms. For platforms that already have a system-wide MDNS responder, this will do nothing. Else, sockets will be bound to interfaces for interacting with the multicast group address.
+  /**
+   * Gets the bound resolved host IP (not hostname).
+   * This can be the IPv4 or IPv6 address.
+   * This could be a wildcard address which means all interfaces.
+   * Note that `::` can mean all IPv4 and all IPv6.
+   * Whereas `0.0.0.0` means only all IPv4.
+   */
+  @ready(new errors.ErrorMDNSNotRunning)
+  public get host(): Host {
+    return this._host;
+  }
+
+  /**
+   * Gets the bound resolved port.
+   * This cannot be `0`.
+   * Because `0` is always resolved to a specific port.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get port() {
+    return this._port;
+  }
+
+  /**
+   * Gets the type of socket
+   * It can be ipv4-only, ipv6-only or dual stack
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get type(): 'ipv4' | 'ipv6' | 'ipv4&ipv6' {
+    return this._type;
+  }
+
+  /**
+   * Gets the multicast groups this socket is bound to.
+   * There will always be at least 1 value.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get groups(): ReadonlyArray<Host> {
+    return this._groups;
+  }
+
+
+
+
+  /**
+   * Starts MDNS
+
+   * @param opts
+   * @param opts.host - The host to bind to. Defaults to `::` for dual stack.
+   * @param opts.port - The port to bind to. Defaults to 5353 the default MDNS port.
+   * @param opts.group - The multicast group IP addresses to multi-cast on. This can have both IPv4 and IPv6.
+   * @param opts.hostname - The hostname to use for the MDNS stack. Defaults to the OS hostname.
+   * @param opts.reuseAddr - Allows MDNs to bind on the same port that an existing MDNS stack is already bound on. Defaults to true.
+   */
   public async start({
     host = '::' as Host,
     port = 5353 as Port,
     ipv6Only = false,
-    group = ['224.0.0.251', 'ff02::fb'] as Host[],
-    hostname = `${os.hostname()}.local` as Hostname,
+    groups = ['224.0.0.251', 'ff02::fb'] as Array<Host>,
+    hostname = utils.getHostname(),
     reuseAddr = true,
   }: {
     host?: Host | Hostname;
     port?: Port;
     ipv6Only?: boolean;
-    group?: Host[];
+
+    groups?: Array<Host>;
     hostname?: Hostname;
     reuseAddr?: boolean;
+
   }): Promise<void> {
+
+    if (groups.length < 1) {
+      throw new RangeError('Must have at least 1 multicast group');
+    }
+
+    // TODO: move this to where it is exactly needed so `hostname` should be the same property
+    // MDNS requires all hostnames to have a `.local` with it
+    hostname = hostname + '.local' as Hostname;
+
     let address = utils.buildAddress(host, port);
     this.logger.info(`Start ${this.constructor.name} on ${address}`);
+
     // Resolves the host which could be a hostname and acquire the type.
     // If the host is an IPv4 mapped IPv6 address, then the type should be udp6.
     const [host_, udpType] = await utils.resolveHost(
       host,
       this.resolveHostname,
     );
+    const socketHosts: Array<Host> = [];
+    if (utils.isHostWildcard(host_)) {
+      const networkInterfaces = await this.getNetworkInterfaces();
+      for (const networkInterfaceName in networkInterfaces) {
+        const networkAddresses = networkInterfaces[networkInterfaceName];
+        if (networkAddresses == null) continue;
+        for (const { address, family } of networkAddresses) {
+          if (host_ === '::' && !ipv6Only) {
+            // Dual stack `::` allows both IPv4 and IPv6
+            socketHosts.push(address as Host);
+          } else if (host_ === '::' && ipv6Only && family === 'IPv6') {
+            // Dual stack `::` with `ipv6Only` only allows IPv6 hosts
+            socketHosts.push(address as Host);
+          } else if (udpType === 'udp4' && family === 'IPv4') {
+            // If `0.0.0.0`
+            socketHosts.push(address as Host);
+          } else if (udpType === 'udp6' && !utils.isIPv4MappedIPv6(host_) && family === 'IPv6') {
+            // If `::0`
+            socketHosts.push(address as Host);
+          } else if (udpType === 'udp6' && utils.isIPv4MappedIPv6(host_) && family === 'IPv4') {
+            // If `::ffff:0.0.0.0` or `::ffff:0:0`
+            socketHosts.push(('::ffff:' + address) as Host);
+          }
+        }
+      }
+      if (socketHosts.length < 1) {
+        // TODO: replace this with domain specific error
+        throw new RangeError('Wildcard did not resolve to any network interfaces');
+      }
+    } else {
+      socketHosts.push(host_);
+    }
+
+    // Here we create multiple sockets
+    // This may only contain 1
+    // or we end up with multiple sockets we are working with
+
+    const sockets: Array<{
+      socket: dgram.Socket;
+      close: () => Promise<void>,
+    }> = [];
+    for (const socketHost of socketHosts) {
+      const socket = dgram.createSocket({
+        type: udpType,
+        reuseAddr,
+        ipv6Only
+      });
+      const socketBind = utils.promisify(socket.bind).bind(socket);
+      const socketClose = utils.promisify(socket.close).bind(socket);
+      const { p: errorP, rejectP: rejectErrorP } = utils.promise();
+      socket.once('error', rejectErrorP);
+      const socketBindP = socketBind(port, socketHost);
+      try {
+        await Promise.race([socketBindP, errorP]);
+      } catch (e) {
+        for (const socket of sockets.reverse()) {
+          await socket.close();
+        }
+        // Possible binding failure due to EINVAL or ENOTFOUND.
+        // EINVAL due to using IPv4 address where udp6 is specified.
+        // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
+        // or doesn't resolve to IPv4 if udp4 is specified.
+        throw new errors.ErrorMDNSInvalidBindAddress(
+          host !== host_
+            ? `Could not bind to resolved ${host} -> ${host_}`
+            : `Could not bind to ${host}`,
+          {
+            cause: e,
+          },
+        );
+      }
+      socket.removeListener('error', rejectErrorP)
+      sockets.push({
+        socket,
+        close: socketClose
+      });
+    }
+
+
+    // We have to figure out 1 socket at a time
+    // And we have to decide what we are doing here
+
+
+
     this.socket = dgram.createSocket({
       type: udpType,
       reuseAddr,
@@ -163,6 +301,8 @@ class MDNS extends EventTarget {
     this.socket.setTTL(MDNS_TTL);
     this.socket.setMulticastTTL(MDNS_TTL);
     this.socket.setMulticastLoopback(true);
+
+
     const ifaces = Object.values(os.networkInterfaces()).flatMap((iface) =>
       typeof iface === 'undefined' ? [] : iface,
     );

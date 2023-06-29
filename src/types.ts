@@ -57,6 +57,16 @@ type Service = {
   hosts: Host[];
 } & ServiceConstructor;
 
+type NetworkAddress = {
+  address: string;
+  family: 'IPv4' | 'IPv6';
+};
+
+type NetworkInterfaces = Record<
+  string,
+  Array<NetworkAddress> | undefined
+>;
+
 export type {
   Opaque,
   Callback,
@@ -67,4 +77,6 @@ export type {
   Address,
   ServiceConstructor,
   Service,
+  NetworkAddress,
+  NetworkInterfaces,
 };

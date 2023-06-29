@@ -8,6 +8,10 @@ class ErrorMDNSRunning<T> extends ErrorMDNS<T> {
   static description = 'MDNS is running';
 }
 
+class ErrorMDNSNotRunning<T> extends ErrorMDNS<T> {
+  static description = 'MDNS is not running';
+}
+
 class ErrorMDNSDestroyed<T> extends ErrorMDNS<T> {
   static description = 'MDNS is destroyed';
 }
@@ -23,6 +27,7 @@ class ErrorMDNSInvalidSendAddress<T> extends ErrorMDNS<T> {
 export {
   ErrorMDNS,
   ErrorMDNSRunning,
+  ErrorMDNSNotRunning,
   ErrorMDNSDestroyed,
   ErrorMDNSInvalidBindAddress,
   ErrorMDNSInvalidSendAddress,

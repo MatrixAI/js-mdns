@@ -169,6 +169,14 @@ class MDNS extends EventTarget {
       this.resolveHostname,
     );
     const socketHosts: Array<Host> = [];
+    // When binding to wild card
+    // We explicitly find out all the interfaces we are going to bind to
+    // This is because we only want to respond on the interface where we received
+    // A query or announcement from
+    // This is because each network could have its own multicast group
+    // And if a query is received on one network's multicast group
+    // Then we want to send that back on the same network
+    // Using the same interface, so a specific socket
     if (utils.isHostWildcard(host_)) {
       const networkInterfaces = await this.getNetworkInterfaces();
       for (const networkInterfaceName in networkInterfaces) {
@@ -207,7 +215,8 @@ class MDNS extends EventTarget {
 
     const sockets: Array<{
       socket: dgram.Socket;
-      close: () => Promise<void>,
+      close: () => Promise<void>;
+      send: (...params: Array<any>) => Promise<number>;
     }> = [];
     for (const socketHost of socketHosts) {
       const socket = dgram.createSocket({
@@ -217,6 +226,7 @@ class MDNS extends EventTarget {
       });
       const socketBind = utils.promisify(socket.bind).bind(socket);
       const socketClose = utils.promisify(socket.close).bind(socket);
+      const socketSend = utils.promisify(socket.send).bind(socket);
       const { p: errorP, rejectP: rejectErrorP } = utils.promise();
       socket.once('error', rejectErrorP);
       const socketBindP = socketBind(port, socketHost);
@@ -242,7 +252,8 @@ class MDNS extends EventTarget {
       socket.removeListener('error', rejectErrorP)
       sockets.push({
         socket,
-        close: socketClose
+        close: socketClose,
+        send: socketSend,
       });
     }
 
@@ -252,13 +263,13 @@ class MDNS extends EventTarget {
 
 
 
-    this.socket = dgram.createSocket({
-      type: udpType,
-      reuseAddr,
-      ipv6Only,
-    });
-    this.socketBind = utils.promisify(this.socket.bind).bind(this.socket);
-    this.socketClose = utils.promisify(this.socket.close).bind(this.socket);
+    // this.socket = dgram.createSocket({
+    //   type: udpType,
+    //   reuseAddr,
+    //   ipv6Only,
+    // });
+    // this.socketBind = utils.promisify(this.socket.bind).bind(this.socket);
+    // this.socketClose = utils.promisify(this.socket.close).bind(this.socket);
     this.socketSend = utils.promisify(this.socket.send).bind(this.socket);
     const { p: errorP, rejectP: rejectErrorP } = utils.promise();
     this.socket.once('error', rejectErrorP);

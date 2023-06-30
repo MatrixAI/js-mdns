@@ -8,8 +8,8 @@ describe('Responder', () => {
   test('some arbitrary test', async () => {
     const mdnsPort = 12345 as Port;
 
-    const mdns1 = MDNS.createMDNS({});
-    const mdns2 = MDNS.createMDNS({});
+    const mdns1 = new MDNS();
+    const mdns2 = new MDNS();
 
     const mdns1Hostname = "polykey1.local" as Hostname;
     await mdns1.start({ hostname: mdns1Hostname, port: mdnsPort });

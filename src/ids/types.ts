@@ -1,12 +1,11 @@
 import { Opaque } from "@/types";
-import { Id } from "@matrixai/id";
 
-type TaskId = Opaque<'TaskId', Id>;
+type TaskId = Opaque<'TaskId', string>;
 type TaskIdString = Opaque<'TaskIdEncoded', string>;
 type TaskIdEncoded = Opaque<'TaskIdEncoded', string>;
 type TaskHandlerId = Opaque<'TaskHandlerId', string>;
 
-type ResourceRecordId = Opaque<'ResourceRecordId', Id>;
+type ResourceRecordId = Opaque<'ResourceRecordId', string>;
 type ResourceRecordIdString = Opaque<'ResourceRecordIdString', string>;
 type ResourceRecordIdEncoded = Opaque<'ResourceRecordIdEncoded', string>;
 type ResourceRecordHeaderId = Opaque<'ResourceRecordHeaderId', string>;

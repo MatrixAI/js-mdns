@@ -4,7 +4,6 @@ import type {
   Port,
   Service,
   ServiceConstructor,
-  NetworkInterface,
   NetworkInterfaces
 } from './types';
 import * as dgram from 'dgram';
@@ -71,9 +70,9 @@ class MDNS extends EventTarget {
     logger
   }: {
     resolveHostname?: (hostname: Hostname) => Host | PromiseLike<Host>;
-    getNetworkInterfaces: () => NetworkInterfaces | PromiseLike<NetworkInterfaces>;
+    getNetworkInterfaces?: () => NetworkInterfaces | PromiseLike<NetworkInterfaces>;
     logger?: Logger;
-  }) {
+  } = {}) {
     super();
     this.logger = logger ?? new Logger(this.constructor.name);
     this.resolveHostname = resolveHostname;
@@ -249,7 +248,7 @@ class MDNS extends EventTarget {
           },
         );
       }
-      socket.removeListener('error', rejectErrorP)
+      socket.removeListener('error', rejectErrorP);
       sockets.push({
         socket,
         close: socketClose,
@@ -257,6 +256,22 @@ class MDNS extends EventTarget {
       });
     }
 
+    for (const group of groups) {
+      const isIPv6 = utils.isIPv6(group);
+      const isIpv4 = utils.isIPv4(group);
+      for (const socket of sockets) {
+        socket.socket.setTTL(MDNS_TTL);
+        socket.socket.setMulticastTTL(MDNS_TTL);
+        socket.socket.setMulticastLoopback(true);
+        const remoteAddress = socket.socket.remoteAddress();
+        if (remoteAddress.family === 'IPv6' && isIPv6) {
+          socket.socket.addMembership(group, remoteAddress.address);
+        }
+        if (remoteAddress.family === 'IPv4' && isIpv4) {
+          socket.socket.addMembership(group, remoteAddress.address);
+        }
+      }
+    }
 
     // We have to figure out 1 socket at a time
     // And we have to decide what we are doing here

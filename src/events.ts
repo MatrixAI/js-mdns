@@ -1,5 +1,5 @@
-import { ResourceRecord } from './dns';
 import type { Service } from './types';
+import type { ResourceRecord } from './dns';
 
 class MDNSServiceEvent extends Event {
   public detail: Service;

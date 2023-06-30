@@ -77,15 +77,9 @@ const enum QType { // RFC 1035 3.2.2. 3.2.3.
   ANY = 255,
 }
 
-type CachableResourceRecord =
-| StringRecord
-| TXTRecord
-| SRVRecord
-| NSECRecord;
-
+type CachableResourceRecord = StringRecord | TXTRecord | SRVRecord | NSECRecord;
 
 type ResourceRecord = CachableResourceRecord | OPTRecord;
-
 
 const enum RType { // RFC 1035 3.2.2.
   A = 1,
@@ -133,10 +127,7 @@ type SRVRecordValue = {
   weight: number;
 };
 
-type OPTRecord = BaseResourceRecord<
-  RType.OPT,
-  any[]
-> & {
+type OPTRecord = BaseResourceRecord<RType.OPT, any[]> & {
   name: '0';
   ttl: 0;
   flush: false;

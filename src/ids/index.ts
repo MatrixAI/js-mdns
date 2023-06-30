@@ -1,19 +1,24 @@
-import { ResourceRecordHeaderId, ResourceRecordId, ResourceRecordIdEncoded, TaskId, TaskIdEncoded } from "./types";
-import crypto from "crypto";
-import { QuestionRecord, ResourceRecord } from "@/dns";
+import type { ResourceRecordHeaderId, ResourceRecordId } from './types';
+import type { QuestionRecord, ResourceRecord } from '@/dns';
+import crypto from 'crypto';
+import { ResourceRecordIdEncoded, TaskId, TaskIdEncoded } from './types';
 
 /**
  * Generates ResourceRecordId
  */
 function createResourceRecordIdGenerator(): () => ResourceRecordId {
-  return () => crypto.randomBytes(8).toString("hex") as ResourceRecordId;
+  return () => crypto.randomBytes(8).toString('hex') as ResourceRecordId;
 }
 
 /**
  * Converts `ResourceRecord` or `QuestionRecord` to `ResourceRecordHeaderId`
  */
-function toRecordHeaderId(record: ResourceRecord | QuestionRecord): ResourceRecordHeaderId {
-  return [record.name, record.type, record.class].join('\u0000') as ResourceRecordHeaderId;
+function toRecordHeaderId(
+  record: ResourceRecord | QuestionRecord,
+): ResourceRecordHeaderId {
+  return [record.name, record.type, record.class].join(
+    '\u0000',
+  ) as ResourceRecordHeaderId;
 }
 
 /**
@@ -34,6 +39,6 @@ export {
   createResourceRecordIdGenerator,
   toRecordHeaderId,
   fromRecordHeaderId,
-}
+};
 
 export * from './types';

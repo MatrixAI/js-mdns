@@ -1,6 +1,7 @@
-import { CachableResourceRecord, QClass, QType, QuestionRecord, RClass, RType } from "@/dns";
-import { MDNSCacheExpiredEvent } from "@/events";
-import MDNSCache from "@/MDNSCache";
+import type { CachableResourceRecord, QuestionRecord } from '@/dns';
+import type { MDNSCacheExpiredEvent } from '@/events';
+import { QClass, QType, RClass, RType } from '@/dns';
+import MDNSCache from '@/MDNSCache';
 
 describe(MDNSCache.name, () => {
   let cache: MDNSCache;
@@ -29,7 +30,7 @@ describe(MDNSCache.name, () => {
   });
 
   test('multiple', () => {
-    const domain = "test.local";
+    const domain = 'test.local';
     const records: CachableResourceRecord[] = [
       {
         name: domain,
@@ -46,14 +47,14 @@ describe(MDNSCache.name, () => {
         flush: false,
         data: '192.168.0.2',
         ttl: 120,
-      }
+      },
     ];
     cache.set(records);
     expect(cache.get(records[0])).toEqual(records);
   });
 
   test('any', () => {
-    const domain = "test.local";
+    const domain = 'test.local';
     const records: CachableResourceRecord[] = [
       {
         name: domain,
@@ -77,13 +78,13 @@ describe(MDNSCache.name, () => {
       name: domain,
       class: QClass.ANY,
       type: QType.ANY,
-      unicast: false
-    }
+      unicast: false,
+    };
     expect(cache.get(question)).toEqual(records);
   });
 
   test('expiry', async () => {
-    const domain = "test.local";
+    const domain = 'test.local';
     const records: CachableResourceRecord[] = [
       {
         name: domain,
@@ -130,7 +131,7 @@ describe(MDNSCache.name, () => {
           resolve(null);
         }
         expiredIndex++;
-      })
+      });
     });
   });
 });

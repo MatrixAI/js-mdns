@@ -11,10 +11,10 @@ describe('Responder', () => {
     const mdns1 = new MDNS();
     const mdns2 = new MDNS();
 
-    const mdns1Hostname = "polykey1.local" as Hostname;
+    const mdns1Hostname = 'polykey1.local' as Hostname;
     await mdns1.start({ hostname: mdns1Hostname, port: mdnsPort });
 
-    const mdns2Hostname = "polykey2.local" as Hostname;
+    const mdns2Hostname = 'polykey2.local' as Hostname;
     await mdns2.start({ hostname: mdns2Hostname, port: mdnsPort });
 
     const name = 'test';
@@ -29,12 +29,14 @@ describe('Responder', () => {
       type,
     });
 
-    mdns2.query({
-      type,
-      protocol
-    }).next();
+    mdns2
+      .query({
+        type,
+        protocol,
+      })
+      .next();
     mdns2.addEventListener('service', (e: MDNSServiceEvent) => {
-      console.log(e.detail)
+      console.log(e.detail);
       expect(e.detail.name).toBe(name);
       expect(e.detail.port).toBe(port);
       expect(e.detail.protocol).toBe(protocol);

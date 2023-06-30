@@ -1,4 +1,4 @@
-import { Opaque } from "@/types";
+import type { Opaque } from '@/types';
 
 type TaskId = Opaque<'TaskId', string>;
 type TaskIdString = Opaque<'TaskIdEncoded', string>;
@@ -10,7 +10,7 @@ type ResourceRecordIdString = Opaque<'ResourceRecordIdString', string>;
 type ResourceRecordIdEncoded = Opaque<'ResourceRecordIdEncoded', string>;
 type ResourceRecordHeaderId = Opaque<'ResourceRecordHeaderId', string>;
 
-export {
+export type {
   TaskId,
   TaskIdString,
   TaskIdEncoded,
@@ -18,5 +18,5 @@ export {
   ResourceRecordId,
   ResourceRecordIdString,
   ResourceRecordIdEncoded,
-  ResourceRecordHeaderId
-}
+  ResourceRecordHeaderId,
+};

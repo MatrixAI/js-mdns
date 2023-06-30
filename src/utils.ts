@@ -306,8 +306,6 @@ function resolvesZeroIP(host: Host): Host {
   }
 }
 
-
-
 // Default ResourceRecord ttl is 120 seconds
 function toHostResourceRecords(
   hosts: Host[],
@@ -387,10 +385,7 @@ function toServiceResourceRecords(
   });
 }
 
-function insertionSort<T>(
-  arr: T[],
-  compare: (a: T, b: T) => number,
-) {
+function insertionSort<T>(arr: T[], compare: (a: T, b: T) => number) {
   for (let i = 1; i < arr.length; i++) {
     const temp = arr[i];
     let j = i - 1;
@@ -425,5 +420,5 @@ export {
   toHostResourceRecords,
   isService,
   toServiceResourceRecords,
-  insertionSort
+  insertionSort,
 };

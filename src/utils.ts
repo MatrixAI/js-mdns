@@ -1,4 +1,5 @@
 import type {
+  CachableResourceRecordRow,
   Callback,
   Host,
   Hostname,
@@ -11,6 +12,7 @@ import type {
   ResourceRecord,
   QuestionRecord,
   QType,
+  CachableResourceRecord,
 } from '@/dns';
 import dns from 'dns';
 import os from 'os';
@@ -397,6 +399,25 @@ function insertionSort<T>(arr: T[], compare: (a: T, b: T) => number) {
   }
 }
 
+function toCachableResourceRecordRow(record: CachableResourceRecord, timestamp: number, relatedHostname?: Hostname): CachableResourceRecordRow {
+  return {
+    ...record,
+    timestamp,
+    relatedHostname
+  }
+}
+
+function fromCachableResourceRecordRow(row: CachableResourceRecordRow): CachableResourceRecord {
+  return {
+    name: row.name,
+    type: row.type,
+    class: row.class,
+    ttl: row.ttl,
+    flush: row.flush,
+    data: row.data as any,
+  }
+}
+
 export {
   isIPv4,
   isIPv6,
@@ -421,4 +442,6 @@ export {
   isService,
   toServiceResourceRecords,
   insertionSort,
+  toCachableResourceRecordRow,
+  fromCachableResourceRecordRow,
 };

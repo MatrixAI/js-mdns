@@ -1,30 +1,32 @@
 import type { QuestionRecord, CachableResourceRecord } from './dns';
 import type { ResourceRecordHeaderId, ResourceRecordId } from './ids';
-import type { Hostname } from './types';
+import type { Hostname, CachableResourceRecordRow } from './types';
 import { CreateDestroy } from '@matrixai/async-init/dist/CreateDestroy';
 import { Timer } from '@matrixai/timer';
 import { QClass, QType, RType } from './dns';
 import { MDNSCacheExpiredEvent } from './events';
 import { createResourceRecordIdGenerator, toRecordHeaderId } from './ids';
 import * as utils from './utils';
+import Table from "@matrixai/table";
 
 interface MDNSCache extends CreateDestroy {}
 @CreateDestroy()
 class MDNSCache extends EventTarget {
-  private resourceRecordIdGenerator: () => ResourceRecordId =
-    createResourceRecordIdGenerator();
-  private resourceRecordCache: Map<ResourceRecordId, CachableResourceRecord> =
-    new Map();
-  private resourceRecordCacheByHeaderId: Map<
-    ResourceRecordHeaderId,
-    ResourceRecordId[]
-  > = new Map();
-  private resourceRecordCacheByHostname: Map<Hostname, ResourceRecordId[]> =
-    new Map();
+  private resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
+    ['name', 'type', 'class', 'data', 'ttl', 'relatedHostname', 'timestamp'],
+    [
+      [['name', 'type', 'class', 'data'], (...vs) => vs.map((v) => JSON.stringify(v)).join('')], // For uniqueness
+      ['name', 'type', 'class'], // For matching questions
+      ['name', 'class'], // For matching questions with type ANY
+      ['name', 'type'], // For matching questions with class ANY
+      ['name'], // For matching questions with class and type ANY
+      ['relatedHostname'], // For reverse matching records on their relatedHostname,
+
+    ]
+  );
+
   // This is by timestamp + ttl. This is only sorted when the timer is reset!
-  private resourceRecordCacheByExpiration: ResourceRecordId[] = [];
-  private resourceRecordCacheTimestamps: Map<ResourceRecordId, number> =
-    new Map();
+  private resourceRecordCacheIndexesByExpiration: Array<number> = [];
   private resourceRecordCacheTimer: Timer = new Timer();
 
   public static createMDNSCache() {
@@ -39,67 +41,38 @@ class MDNSCache extends EventTarget {
       return this.set([records]);
     }
     for (const record of records) {
-      const resourceRecordId = this.resourceRecordIdGenerator();
-      this.resourceRecordCache.set(resourceRecordId, record);
-      this.resourceRecordCacheTimestamps.set(
-        resourceRecordId,
-        new Date().getTime(),
+      const existingUniqueRowIndexes = this.resourceRecordCache.whereRows(
+        ['name', 'type', 'class', 'data'],
+        [record.name, record.type, record.class, record.data]
       );
-      this.resourceRecordCacheByExpiration.push(resourceRecordId);
 
-      let foundHostName: Hostname | undefined;
+      if (existingUniqueRowIndexes.length > 0) {
+        for (const index of existingUniqueRowIndexes) {
+          this.resourceRecordCache.updateRow(index, {
+            ...record,
+            timestamp: new Date().getTime()
+          });
+        }
+        continue;
+      }
+
+      let relatedHostname: Hostname | undefined;
       if (
         record.type === RType.PTR &&
         record.name !== '_services._dns-sd._udp.local'
       ) {
-        foundHostName = record.data as Hostname;
+        relatedHostname = record.data as Hostname;
       } else if (record.type === RType.SRV) {
-        foundHostName = record.data.target as Hostname;
-      }
-      if (foundHostName != null) {
-        let resourceRecordCacheByHostname =
-          this.resourceRecordCacheByHostname.get(foundHostName);
-        if (typeof resourceRecordCacheByHostname === 'undefined') {
-          resourceRecordCacheByHostname = [];
-          this.resourceRecordCacheByHostname.set(
-            foundHostName,
-            resourceRecordCacheByHostname,
-          );
-        }
-        resourceRecordCacheByHostname.push(resourceRecordId);
+        relatedHostname = record.data.target as Hostname;
       }
 
-      const relevantHeaders: (QuestionRecord | CachableResourceRecord)[] = [
-        record,
-        {
-          name: record.name,
-          type: record.type as number as QType,
-          class: QClass.ANY,
-          unicast: false,
-        },
-        {
-          name: record.name,
-          type: QType.ANY,
-          class: record.class as number as QClass,
-          unicast: false,
-        },
-        {
-          name: record.name,
-          type: QType.ANY,
-          class: QClass.ANY,
-          unicast: false,
-        },
-      ];
+      const rowI = this.resourceRecordCache.insertRow({
+        ...record,
+        relatedHostname,
+        timestamp: new Date().getTime(),
+      });
 
-      for (const header of relevantHeaders) {
-        const headerId = toRecordHeaderId(header);
-        let array = this.resourceRecordCacheByHeaderId.get(headerId);
-        if (!Array.isArray(array)) {
-          array = [];
-          this.resourceRecordCacheByHeaderId.set(headerId, array);
-        }
-        array.push(resourceRecordId);
-      }
+      this.resourceRecordCacheIndexesByExpiration.push(rowI);
     }
     this.resourceRecordCacheTimerReset();
   }
@@ -112,156 +85,40 @@ class MDNSCache extends EventTarget {
     if (!Array.isArray(records)) {
       return this.delete([records]);
     }
-    const relevantHeaders = records.flatMap((record) => [
-      record,
-      {
-        name: record.name,
-        type: record.type as number as QType,
-        class: QClass.ANY,
-        unicast: false,
-      },
-      {
-        name: record.name,
-        type: QType.ANY,
-        class: record.class as QClass,
-        unicast: false,
-      },
-      {
-        name: record.name,
-        type: QType.ANY,
-        class: QClass.ANY,
-        unicast: false,
-      },
-    ]);
-    for (const headers of relevantHeaders) {
-      const resourceRecordHeaderId = toRecordHeaderId(headers);
-      const resourceRecordIds =
-        this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId) ?? [];
-      const deletedResourceRecordIds: ResourceRecordId[] = [];
-      for (const resourceRecordId of resourceRecordIds) {
-        // Delete from resourceRecordCacheByHostname
-        const foundResourceRecord =
-          this.resourceRecordCache.get(resourceRecordId);
-        if (foundResourceRecord != null) {
-          let foundHostName: Hostname | undefined;
-          if (
-            foundResourceRecord.type === RType.PTR &&
-            foundResourceRecord.name !== '_services._dns-sd._udp.local'
-          ) {
-            foundHostName = foundResourceRecord.data as Hostname;
-          } else if (foundResourceRecord.type === RType.SRV) {
-            foundHostName = foundResourceRecord.data.target as Hostname;
-          }
-          if (foundHostName != null) {
-            const resourceRecordCacheByHostname =
-              this.resourceRecordCacheByHostname.get(foundHostName) ?? [];
-            resourceRecordCacheByHostname.splice(
-              resourceRecordCacheByHostname.indexOf(resourceRecordId),
-              1,
-            );
-            if (resourceRecordCacheByHostname.length === 0) {
-              this.resourceRecordCacheByHostname.delete(foundHostName);
-            }
-          }
+
+    let rescheduleTimer = true;
+
+    for (const record of records) {
+      const indexes = ['name'];
+      const keys: Array<any> = [record.name];
+      if (record.type !== QType.ANY) {
+        indexes.push('type');
+        keys.push(record.type);
+      }
+      if (record.class !== QClass.ANY) {
+        indexes.push('class');
+        keys.push(record.class);
+      }
+      const foundRowIs = this.resourceRecordCache.whereRows(indexes, keys);
+      for (const foundRowI of foundRowIs) {
+        this.resourceRecordCache.deleteRow(foundRowI);
+        const expirationIndex = this.resourceRecordCacheIndexesByExpiration.indexOf(foundRowI);
+        // If the deleted record was the next to expire, we can reschedule the timer.
+        // Otherwise there is no need, as the current timer to delete the earliest expiring record is still valid.
+        // This is some nice optimization that will save us some unnecessary sorting, but it will mean that the expiration array is sorted less.
+        // To note also, deletion doesn't actually even need the array to be sorted. As deleting from a stable sorted array doesn't changed that the array is already sorted.
+        // TODO: This optimization can be done later...
+        if (expirationIndex === 0) {
+          rescheduleTimer = true;
         }
-
-        this.resourceRecordCache.delete(resourceRecordId);
-        this.resourceRecordCacheTimestamps.delete(resourceRecordId);
-        const resourceRecordCacheByHeaderId =
-          this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId);
-        resourceRecordCacheByHeaderId?.splice(
-          resourceRecordCacheByHeaderId.indexOf(resourceRecordId),
-          1,
-        );
-        this.resourceRecordCacheByExpiration.splice(
-          this.resourceRecordCacheByExpiration.indexOf(resourceRecordId),
-          1,
-        );
-        deletedResourceRecordIds.push(resourceRecordId);
-      }
-      for (const deletedResourceRecordId of deletedResourceRecordIds) {
-        resourceRecordIds.splice(
-          resourceRecordIds.indexOf(deletedResourceRecordId),
-          1,
-        );
-      }
-    }
-    this.resourceRecordCacheTimerReset();
-  }
-
-  private deleteByResourceRecordId(
-    resourceRecordIds: ResourceRecordId | ResourceRecordId[],
-  ) {
-    if (!Array.isArray(resourceRecordIds)) {
-      return this.deleteByResourceRecordId([resourceRecordIds]);
-    }
-    for (const resourceRecordId of resourceRecordIds) {
-      const foundResourceRecord =
-        this.resourceRecordCache.get(resourceRecordId);
-      if (foundResourceRecord == null) continue;
-      // Delete from resourceRecordCacheByHostname
-      let foundHostName: Hostname | undefined;
-      if (
-        foundResourceRecord.type === RType.PTR &&
-        foundResourceRecord.name !== '_services._dns-sd._udp.local'
-      ) {
-        foundHostName = foundResourceRecord.data as Hostname;
-      } else if (foundResourceRecord.type === RType.SRV) {
-        foundHostName = foundResourceRecord.data.target as Hostname;
-      }
-      if (foundHostName != null) {
-        const resourceRecordCacheByHostname =
-          this.resourceRecordCacheByHostname.get(foundHostName) ?? [];
-        resourceRecordCacheByHostname.splice(
-          resourceRecordCacheByHostname.indexOf(resourceRecordId),
-          1,
-        );
-        if (resourceRecordCacheByHostname.length === 0) {
-          this.resourceRecordCacheByHostname.delete(foundHostName);
+        if (expirationIndex !== -1) {
+          this.resourceRecordCacheIndexesByExpiration.splice(expirationIndex, 1);
         }
       }
-
-      // Delete from resourceRecordCacheByHeaderId
-      const relevantHeaders = [
-        foundResourceRecord,
-        {
-          name: foundResourceRecord.name,
-          type: foundResourceRecord.type as number as QType,
-          class: QClass.ANY,
-          unicast: false,
-        },
-        {
-          name: foundResourceRecord.name,
-          type: QType.ANY,
-          class: foundResourceRecord.class as number as QClass,
-          unicast: false,
-        },
-        {
-          name: foundResourceRecord.name,
-          type: QType.ANY,
-          class: QClass.ANY,
-          unicast: false,
-        },
-      ];
-
-      for (const header of relevantHeaders) {
-        const resourceRecordHeaderId = toRecordHeaderId(header);
-        const resourceRecordCacheByHeaderId =
-          this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId);
-        resourceRecordCacheByHeaderId?.splice(
-          resourceRecordCacheByHeaderId.indexOf(resourceRecordId),
-          1,
-        );
-      }
-
-      // Delete from resourceRecordCache
-      this.resourceRecordCache.delete(resourceRecordId);
-      this.resourceRecordCacheTimestamps.delete(resourceRecordId);
-      this.resourceRecordCacheByExpiration.splice(
-        this.resourceRecordCacheByExpiration.indexOf(resourceRecordId),
-        1,
-      );
     }
+
+    if (!rescheduleTimer) return;
+
     this.resourceRecordCacheTimerReset();
   }
 
@@ -276,13 +133,24 @@ class MDNSCache extends EventTarget {
 
     const resourceRecords: CachableResourceRecord[] = [];
     for (const record of records) {
-      const resourceRecordHeaderId = toRecordHeaderId(record);
-      const resourceRecordIds =
-        this.resourceRecordCacheByHeaderId.get(resourceRecordHeaderId) ?? [];
-      for (const resourceRecordId of resourceRecordIds) {
-        const resourceRecord = this.resourceRecordCache.get(resourceRecordId);
-        if (resourceRecord != null) {
-          resourceRecords.push(resourceRecord);
+      const indexes = ['name'];
+      const keys: Array<any> = [record.name];
+      if (record.type !== QType.ANY) {
+        indexes.push('type');
+        keys.push(record.type);
+      }
+      if (record.class !== QClass.ANY) {
+        indexes.push('class');
+        keys.push(record.class);
+      }
+      const foundRowIs = this.resourceRecordCache.whereRows(
+        indexes,
+        keys
+      );
+      for (const foundRowI of foundRowIs) {
+        const foundResourceRecordRows = this.resourceRecordCache.getRow(foundRowI);
+        if (foundResourceRecordRows) {
+          resourceRecords.push(utils.fromCachableResourceRecordRow(foundResourceRecordRows));
         }
       }
     }
@@ -292,50 +160,60 @@ class MDNSCache extends EventTarget {
   public getHostnameRelatedResourceRecords(
     hostname: Hostname,
   ): CachableResourceRecord[] {
-    const resourceRecordIds =
-      this.resourceRecordCacheByHostname.get(hostname) ?? [];
-    return resourceRecordIds.flatMap(
-      (resourceRecordId) =>
-        this.resourceRecordCache.get(resourceRecordId) ?? [],
-    );
+    const foundRowIs = this.resourceRecordCache.whereRows("relatedHostname", hostname);
+    const foundResourceRecords = foundRowIs.flatMap((rI) => {
+      const row = this.resourceRecordCache.getRow(rI);
+      return row != null ? utils.fromCachableResourceRecordRow(row) : [];
+    });
+    return foundResourceRecords;
   }
 
-  public has(records: QuestionRecord | CachableResourceRecord): boolean {
-    const resourceRecordHeaderId = toRecordHeaderId(records);
-    return this.resourceRecordCacheByHeaderId.has(resourceRecordHeaderId);
+  public has(record: QuestionRecord | CachableResourceRecord): boolean {
+    const indexes = ['name'];
+    const keys: Array<any> = [record.name];
+    if (record.type !== QType.ANY) {
+      indexes.push('type');
+      keys.push(record.type);
+    }
+    if (record.class !== QClass.ANY) {
+      indexes.push('class');
+      keys.push(record.class);
+    }
+    return this.resourceRecordCache.whereRows(indexes, keys).length > 0;
   }
 
   private resourceRecordCacheTimerReset() {
     this.resourceRecordCacheTimer.cancel();
     utils.insertionSort(
-      this.resourceRecordCacheByExpiration,
-      (a, b) =>
-        (this.resourceRecordCacheTimestamps.get(a) ?? 0) +
-        (this.resourceRecordCache.get(a)?.ttl ?? 0) * 1000 -
-        ((this.resourceRecordCacheTimestamps.get(b) ?? 0) +
-          (this.resourceRecordCache.get(b)?.ttl ?? 0) * 1000),
-    );
-    const fastestExpiringRecordId = this.resourceRecordCacheByExpiration.at(0);
-    if (fastestExpiringRecordId != null) {
-      const record = this.resourceRecordCache.get(fastestExpiringRecordId);
-      const timestamp = this.resourceRecordCacheTimestamps.get(
-        fastestExpiringRecordId,
-      );
-      if (timestamp != null && record != null) {
-        // RFC 6762 8.4. TTL always has a 1 second floor
-        const ttl = record.ttl !== 0 ? record.ttl : 1;
-        const delayMilis = ttl * 1000 + timestamp - new Date().getTime();
-        this.resourceRecordCacheTimer = new Timer(
-          async () => {
-            // TODO: Requery missing packets
-            // TODO: Delete Records and Parse
-            this.dispatchEvent(new MDNSCacheExpiredEvent({ detail: record }));
-            this.deleteByResourceRecordId(fastestExpiringRecordId);
-          },
-          delayMilis > 0 ? delayMilis : 0,
-        );
+      this.resourceRecordCacheIndexesByExpiration,
+      (a, b) => {
+        const aEntry = this.resourceRecordCache.getRow(a);
+        const bEntry = this.resourceRecordCache.getRow(b);
+        return ((aEntry?.timestamp ?? 0) +
+        (aEntry?.ttl ?? 0) * 1000 -
+        ((bEntry?.timestamp ?? 0) +
+          (bEntry?.ttl ?? 0) * 1000));
       }
-    }
+    );
+    const fastestExpiringRowI = this.resourceRecordCacheIndexesByExpiration.at(0);
+    if (fastestExpiringRowI == null) return;
+    const record = this.resourceRecordCache.getRow(fastestExpiringRowI);
+    if (record == null) return;
+    // RFC 6762 8.4. TTL always has a 1 second floor
+    const ttl = record.ttl !== 0 ? record.ttl : 1;
+    const delayMilis = ttl * 1000 + record.timestamp - new Date().getTime();
+    this.resourceRecordCacheTimer = new Timer(
+      async () => {
+        // TODO: Requery missing packets
+        // TODO: Delete Records and Parse
+        this.dispatchEvent(new MDNSCacheExpiredEvent({ detail: utils.fromCachableResourceRecordRow(record) }));
+        this.resourceRecordCache.deleteRow(fastestExpiringRowI);
+        // As the timer is always set to the first element, we can assume that the element we are working on is always the first
+        this.resourceRecordCacheIndexesByExpiration.splice(0, 1);
+        this.resourceRecordCacheTimerReset();
+      },
+      delayMilis > 0 ? delayMilis : 0,
+    );
   }
 }
 

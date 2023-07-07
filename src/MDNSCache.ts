@@ -8,6 +8,7 @@ import { MDNSCacheExpiredEvent } from './events';
 import { createResourceRecordIdGenerator, toRecordHeaderId } from './ids';
 import * as utils from './utils';
 import Table from "@matrixai/table";
+import canonicalize from 'canonicalize';
 
 interface MDNSCache extends CreateDestroy {}
 @CreateDestroy()
@@ -15,7 +16,7 @@ class MDNSCache extends EventTarget {
   private resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
     ['name', 'type', 'class', 'data', 'ttl', 'relatedHostname', 'timestamp'],
     [
-      [['name', 'type', 'class', 'data'], (...vs) => vs.map((v) => JSON.stringify(v)).join('')], // For uniqueness
+      [['name', 'type', 'class', 'data'], (...vs) => canonicalize(vs)], // For uniqueness
       ['name', 'type', 'class'], // For matching questions
       ['name', 'class'], // For matching questions with type ANY
       ['name', 'type'], // For matching questions with class ANY

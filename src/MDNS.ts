@@ -33,6 +33,7 @@ import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 import Table from '@matrixai/table';
+import { IPv6 } from 'ip-num';
 
 const MDNS_TTL = 255;
 
@@ -62,6 +63,8 @@ class MDNS extends EventTarget {
       send: (...params: Array<any>) => Promise<number>;
       networkInterfaceName: string;
       host: string;
+      udpType: 'udp4' | 'udp6';
+      group: Host;
     }
   > = new WeakMap();
   protected hostTable: Table<{ networkInterfaceName: string; host: Host, udpType: "udp4" | "udp6" }> = new Table([ 'networkInterfaceName', 'host', 'udpType' ], ['networkInterfaceName']);
@@ -185,7 +188,7 @@ class MDNS extends EventTarget {
       for (const networkInterfaceName in networkInterfaces) {
         const networkAddresses = networkInterfaces[networkInterfaceName];
         if (networkAddresses == null) continue;
-        for (let { address, family } of networkAddresses) {
+        for (const { address, family } of networkAddresses) {
           if (host_ === '::' && !ipv6Only) {
             // Dual stack `::` allows both IPv4 and IPv6
             socketHosts.push([address as Host, family === 'IPv4' ? 'udp4' : 'udp6', networkInterfaceName]);
@@ -257,13 +260,13 @@ class MDNS extends EventTarget {
     // or we end up with multiple sockets we are working with
     const sockets: Array<dgram.Socket> = [];
     for (let [socketHost, udpType, networkInterfaceName] of [...socketHosts]) {
-      socketHost = udpType === 'udp6' && socketHost.startsWith('fe80')
+      const linkLocalSocketHost = udpType === 'udp6' && socketHost.startsWith('fe80')
         ? socketHost + '%' + networkInterfaceName as Host
         : socketHost;
       for (let group of [...groups]) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
         if (utils.isIPv6(group) && udpType !== 'udp6') continue;
-        group = udpType === 'udp6' && group.startsWith('ff02')
+        const linkLocalGroup = udpType === 'udp6' && group.startsWith('ff02')
           ? group + '%' + networkInterfaceName as Host
           : group;
         const socket = dgram.createSocket({
@@ -278,7 +281,7 @@ class MDNS extends EventTarget {
         socket.once('error', rejectErrorP);
         const socketBindP = socketBind(
           port,
-          group
+          linkLocalGroup
         );
         try {
           await Promise.race([socketBindP, errorP]);
@@ -303,7 +306,7 @@ class MDNS extends EventTarget {
 
         socket.addListener('message', (msg, rinfo) => this.handleSocketMessage(msg, rinfo, socket));
         socket.addListener('error', (...p) => this.handleSocketError(...p));
-        socket.setMulticastInterface(socketHost);
+        socket.setMulticastInterface(linkLocalSocketHost);
         socket.setMulticastTTL(MDNS_TTL);
         socket.setTTL(MDNS_TTL);
         socket.setMulticastLoopback(true);
@@ -312,7 +315,9 @@ class MDNS extends EventTarget {
           close: socketClose,
           send: socketSend,
           networkInterfaceName,
-          host
+          host: socketHost,
+          udpType,
+          group
         });
         sockets.push(socket);
       }
@@ -346,15 +351,8 @@ class MDNS extends EventTarget {
 
   private async sendPacket(packet: Packet, socket: dgram.Socket) {
     const message = generatePacket(packet);
-    for (const group of this._groups) {
-      let g = group;
-      if (this._type === 'ipv4' && !utils.isIPv4(g)) continue;
-      if (this._type === 'ipv6' && !utils.isIPv6(g)) continue;
-      if (this._type === 'ipv4&ipv6' && utils.isIPv4(g)) {
-        g = utils.toIPv4MappedIPv6Dec(group);
-      }
-      await this.socketMap.get(socket)?.send(message, this._port, g);
-    }
+    const socketWrapper = this.socketMap.get(socket);
+    await socketWrapper?.send(message, this._port, socketWrapper.group);
   }
 
   private async handleSocketMessage(msg: Buffer, rinfo: dgram.RemoteInfo, socket: dgram.Socket) {
@@ -398,8 +396,6 @@ class MDNS extends EventTarget {
       this.localRecordCache =
         toServiceResourceRecords.concat(hostResourceRecords);
     }
-
-    console.log(this.localRecordCache)
 
     for (const question of packet.questions) {
       const foundRecord = this.localRecordCache.find(

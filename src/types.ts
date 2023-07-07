@@ -60,6 +60,7 @@ type Service = {
 type NetworkAddress = {
   address: string;
   family: 'IPv4' | 'IPv6';
+  internal: boolean;
 };
 
 type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;

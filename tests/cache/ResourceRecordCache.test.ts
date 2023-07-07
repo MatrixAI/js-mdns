@@ -1,13 +1,13 @@
 import type { CachableResourceRecord, QuestionRecord } from '@/dns';
 import type { MDNSCacheExpiredEvent } from '@/events';
 import { QClass, QType, RClass, RType } from '@/dns';
-import MDNSCache from '@/MDNSCache';
+import { ResourceRecordCache } from '@/cache';
 
-describe(MDNSCache.name, () => {
-  let cache: MDNSCache;
+describe(ResourceRecordCache.name, () => {
+  let cache: ResourceRecordCache;
 
   beforeEach(() => {
-    cache = MDNSCache.createMDNSCache();
+    cache = ResourceRecordCache.createMDNSCache();
   });
 
   afterEach(async () => {

@@ -1,4 +1,4 @@
-import { CachableResourceRecord, OPTRecord, ResourceRecord, RType } from './dns';
+import { OPTRecord, ResourceRecord, RType } from './dns';
 
 /**
  * Opaque types are wrappers of existing types
@@ -64,11 +64,6 @@ type NetworkAddress = {
 
 type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;
 
-type CachableResourceRecordRow = CachableResourceRecord & {
-  timestamp: number;
-  relatedHostname?: string;
-}
-
 export type {
   Opaque,
   Callback,
@@ -80,6 +75,5 @@ export type {
   ServiceConstructor,
   Service,
   NetworkAddress,
-  NetworkInterfaces,
-  CachableResourceRecordRow,
+  NetworkInterfaces
 };

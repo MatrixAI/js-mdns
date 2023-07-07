@@ -1,18 +1,17 @@
-import type { QuestionRecord, CachableResourceRecord } from './dns';
-import type { ResourceRecordHeaderId, ResourceRecordId } from './ids';
-import type { Hostname, CachableResourceRecordRow } from './types';
+import type { QuestionRecord, CachableResourceRecord } from '@/dns';
+import type { CachableResourceRecordRow } from './types';
 import { CreateDestroy } from '@matrixai/async-init/dist/CreateDestroy';
 import { Timer } from '@matrixai/timer';
-import { QClass, QType, RType } from './dns';
+import { QClass, QType, RType } from '@/dns';
 import { MDNSCacheExpiredEvent } from './events';
-import { createResourceRecordIdGenerator, toRecordHeaderId } from './ids';
 import * as utils from './utils';
 import Table from "@matrixai/table";
 import canonicalize from 'canonicalize';
+import { Hostname } from '@/types';
 
-interface MDNSCache extends CreateDestroy {}
+interface ResourceRecordCache extends CreateDestroy {}
 @CreateDestroy()
-class MDNSCache extends EventTarget {
+class ResourceRecordCache extends EventTarget {
   private resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
     ['name', 'type', 'class', 'data', 'ttl', 'relatedHostname', 'timestamp'],
     [
@@ -250,4 +249,4 @@ class MDNSCache extends EventTarget {
   }
 }
 
-export default MDNSCache;
+export default ResourceRecordCache;

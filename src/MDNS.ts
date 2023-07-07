@@ -30,8 +30,7 @@ import {
   RType,
 } from './dns';
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
-import MDNSCache from './MDNSCache';
-import { toRecordHeaderId } from './ids';
+import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 
 const MDNS_TTL = 255;
@@ -54,7 +53,7 @@ class MDNS extends EventTarget {
   protected localRecordCache: Array<ResourceRecord> = [];
   protected localRecordCacheDirty = true;
   // TODO: cache needs to be LRU to prevent DoS
-  protected networkRecordCache: MDNSCache = new MDNSCache();
+  protected networkRecordCache: ResourceRecordCache = ResourceRecordCache.createMDNSCache();
   protected sockets: Array<{
     socket: dgram.Socket;
     close: () => Promise<void>;

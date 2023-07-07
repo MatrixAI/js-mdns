@@ -1,10 +1,8 @@
-import type { CachableResourceRecord } from "@/dns";
+import type { CachableResourceRecord } from '@/dns';
 
 type CachableResourceRecordRow = CachableResourceRecord & {
   timestamp: number;
   relatedHostname?: string;
-}
+};
 
-export {
-  CachableResourceRecordRow
-}
+export type { CachableResourceRecordRow };

@@ -1,6 +1,6 @@
-import type { CachableResourceRecord } from "@/dns";
-import { Hostname } from "@/types";
-import type { CachableResourceRecordRow } from "./types";
+import type { CachableResourceRecord } from '@/dns';
+import type { CachableResourceRecordRow } from './types';
+import type { Hostname } from '@/types';
 
 function insertionSort<T>(arr: T[], compare: (a: T, b: T) => number) {
   for (let i = 1; i < arr.length; i++) {
@@ -14,15 +14,21 @@ function insertionSort<T>(arr: T[], compare: (a: T, b: T) => number) {
   }
 }
 
-function toCachableResourceRecordRow(record: CachableResourceRecord, timestamp: number, relatedHostname?: Hostname): CachableResourceRecordRow {
+function toCachableResourceRecordRow(
+  record: CachableResourceRecord,
+  timestamp: number,
+  relatedHostname?: Hostname,
+): CachableResourceRecordRow {
   return {
     ...record,
     timestamp,
-    relatedHostname
-  }
+    relatedHostname,
+  };
 }
 
-function fromCachableResourceRecordRow(row: CachableResourceRecordRow): CachableResourceRecord {
+function fromCachableResourceRecordRow(
+  row: CachableResourceRecordRow,
+): CachableResourceRecord {
   return {
     name: row.name,
     type: row.type,
@@ -30,11 +36,11 @@ function fromCachableResourceRecordRow(row: CachableResourceRecordRow): Cachable
     ttl: row.ttl,
     flush: row.flush,
     data: row.data as any,
-  }
+  };
 }
 
 export {
   insertionSort,
   toCachableResourceRecordRow,
   fromCachableResourceRecordRow,
-}
+};

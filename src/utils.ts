@@ -408,5 +408,5 @@ export {
   isHostWildcard,
   toHostResourceRecords,
   isService,
-  toServiceResourceRecords
+  toServiceResourceRecords,
 };

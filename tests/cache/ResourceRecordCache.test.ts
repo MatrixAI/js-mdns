@@ -128,8 +128,7 @@ describe(ResourceRecordCache.name, () => {
       cache.addEventListener('expired', (event: MDNSCacheExpiredEvent) => {
         try {
           expect(event.detail.ttl).toEqual(sortedRecords[expiredIndex].ttl);
-        }
-        catch (e) {
+        } catch (e) {
           reject(e);
         }
         if (expiredIndex === sortedRecords.length - 1) {

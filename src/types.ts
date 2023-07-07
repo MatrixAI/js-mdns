@@ -76,5 +76,5 @@ export type {
   ServiceConstructor,
   Service,
   NetworkAddress,
-  NetworkInterfaces
+  NetworkInterfaces,
 };

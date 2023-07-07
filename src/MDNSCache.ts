@@ -26,13 +26,30 @@ class MDNSCache extends EventTarget {
     ]
   );
 
-  // This is by timestamp + ttl. This is only sorted when the timer is reset!
+  // This is sorted by timestamp + ttl in milliseconds in descending order. This is only sorted when the timer is reset!
   private resourceRecordCacheIndexesByExpiration: Array<number> = [];
   private resourceRecordCacheTimer: Timer = new Timer();
 
-  public static createMDNSCache() {
-    return new this();
+  // The max amount of records that can be stored.
+  private _max: number;
+
+  public static createMDNSCache({
+    max = 5000, // Each service is about 5 records, so this is about 1000 services
+  } : {
+    max?: number;
+  } = {}) {
+    return new this({
+      max
+    });
   }
+
+  constructor({
+    max
+  }) {
+    super();
+    this._max = max;
+  }
+
   public async destroy() {
     this.resourceRecordCacheTimer.cancel();
   }
@@ -41,7 +58,10 @@ class MDNSCache extends EventTarget {
     if (!Array.isArray(records)) {
       return this.set([records]);
     }
+    const cacheIterator = this.resourceRecordCache[Symbol.iterator]();
     for (const record of records) {
+
+      // Update existing records if they already exist with a new TTL
       const existingUniqueRowIndexes = this.resourceRecordCache.whereRows(
         ['name', 'type', 'class', 'data'],
         [record.name, record.type, record.class, record.data]
@@ -55,6 +75,16 @@ class MDNSCache extends EventTarget {
           });
         }
         continue;
+      }
+
+      // If the record is being inserted, and there will exist more records than the maximum allowed after insertion, the oldest record is removed.
+      if (this.resourceRecordCache.count >= this._max) {
+        // ?.at(0) is used in case this._max is < 0
+        const overflowRowI: number | undefined = cacheIterator.next().value?.at(0);
+        if (overflowRowI != null) {
+          this.resourceRecordCacheIndexesByExpiration.splice(this.resourceRecordCacheIndexesByExpiration.indexOf(overflowRowI), 1);
+          this.resourceRecordCache.deleteRow(overflowRowI);
+        }
       }
 
       let relatedHostname: Hostname | undefined;
@@ -185,18 +215,20 @@ class MDNSCache extends EventTarget {
 
   private resourceRecordCacheTimerReset() {
     this.resourceRecordCacheTimer.cancel();
+
+    // Latest expiration is always at the end of the array
     utils.insertionSort(
       this.resourceRecordCacheIndexesByExpiration,
       (a, b) => {
         const aEntry = this.resourceRecordCache.getRow(a);
         const bEntry = this.resourceRecordCache.getRow(b);
-        return ((aEntry?.timestamp ?? 0) +
-        (aEntry?.ttl ?? 0) * 1000 -
-        ((bEntry?.timestamp ?? 0) +
-          (bEntry?.ttl ?? 0) * 1000));
+        return ((bEntry?.timestamp ?? 0) +
+        (bEntry?.ttl ?? 0) * 1000 -
+        ((aEntry?.timestamp ?? 0) +
+          (aEntry?.ttl ?? 0) * 1000));
       }
     );
-    const fastestExpiringRowI = this.resourceRecordCacheIndexesByExpiration.at(0);
+    const fastestExpiringRowI = this.resourceRecordCacheIndexesByExpiration.at(-1);
     if (fastestExpiringRowI == null) return;
     const record = this.resourceRecordCache.getRow(fastestExpiringRowI);
     if (record == null) return;
@@ -209,8 +241,8 @@ class MDNSCache extends EventTarget {
         // TODO: Delete Records and Parse
         this.dispatchEvent(new MDNSCacheExpiredEvent({ detail: utils.fromCachableResourceRecordRow(record) }));
         this.resourceRecordCache.deleteRow(fastestExpiringRowI);
-        // As the timer is always set to the first element, we can assume that the element we are working on is always the first
-        this.resourceRecordCacheIndexesByExpiration.splice(0, 1);
+        // As the timer is always set to the last element, we can assume that the element we are working on is always the last
+        this.resourceRecordCacheIndexesByExpiration.splice(-1, 1);
         this.resourceRecordCacheTimerReset();
       },
       delayMilis > 0 ? delayMilis : 0,

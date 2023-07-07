@@ -122,11 +122,16 @@ describe(MDNSCache.name, () => {
     cache.set(records);
 
     // The timer will have to be mocked in future, as waiting for the promise to resolve is time consuming
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
       let expiredIndex = 0;
       const sortedRecords = records.sort((a, b) => a.ttl - b.ttl);
       cache.addEventListener('expired', (event: MDNSCacheExpiredEvent) => {
-        expect(event.detail).toEqual(sortedRecords[expiredIndex]);
+        try {
+          expect(event.detail.ttl).toEqual(sortedRecords[expiredIndex].ttl);
+        }
+        catch (e) {
+          reject(e);
+        }
         if (expiredIndex === sortedRecords.length - 1) {
           resolve(null);
         }

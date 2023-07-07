@@ -1,13 +1,13 @@
 import type { QuestionRecord, CachableResourceRecord } from '@/dns';
 import type { CachableResourceRecordRow } from './types';
+import type { Hostname } from '@/types';
 import { CreateDestroy } from '@matrixai/async-init/dist/CreateDestroy';
 import { Timer } from '@matrixai/timer';
+import Table from '@matrixai/table';
+import canonicalize from 'canonicalize';
 import { QClass, QType, RType } from '@/dns';
 import { MDNSCacheExpiredEvent } from './events';
 import * as utils from './utils';
-import Table from "@matrixai/table";
-import canonicalize from 'canonicalize';
-import { Hostname } from '@/types';
 
 interface ResourceRecordCache extends CreateDestroy {}
 @CreateDestroy()
@@ -21,8 +21,7 @@ class ResourceRecordCache extends EventTarget {
       ['name', 'type'], // For matching questions with class ANY
       ['name'], // For matching questions with class and type ANY
       ['relatedHostname'], // For reverse matching records on their relatedHostname,
-
-    ]
+    ],
   );
 
   // This is sorted by timestamp + ttl in milliseconds in descending order. This is only sorted when the timer is reset!
@@ -34,17 +33,15 @@ class ResourceRecordCache extends EventTarget {
 
   public static createMDNSCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
-  } : {
+  }: {
     max?: number;
   } = {}) {
     return new this({
-      max
+      max,
     });
   }
 
-  constructor({
-    max
-  }) {
+  constructor({ max }) {
     super();
     this._max = max;
   }
@@ -59,18 +56,17 @@ class ResourceRecordCache extends EventTarget {
     }
     const cacheIterator = this.resourceRecordCache[Symbol.iterator]();
     for (const record of records) {
-
       // Update existing records if they already exist with a new TTL
       const existingUniqueRowIndexes = this.resourceRecordCache.whereRows(
         ['name', 'type', 'class', 'data'],
-        [record.name, record.type, record.class, record.data]
+        [record.name, record.type, record.class, record.data],
       );
 
       if (existingUniqueRowIndexes.length > 0) {
         for (const index of existingUniqueRowIndexes) {
           this.resourceRecordCache.updateRow(index, {
             ...record,
-            timestamp: new Date().getTime()
+            timestamp: new Date().getTime(),
           });
         }
         continue;
@@ -79,9 +75,14 @@ class ResourceRecordCache extends EventTarget {
       // If the record is being inserted, and there will exist more records than the maximum allowed after insertion, the oldest record is removed.
       if (this.resourceRecordCache.count >= this._max) {
         // ?.at(0) is used in case this._max is < 0
-        const overflowRowI: number | undefined = cacheIterator.next().value?.at(0);
+        const overflowRowI: number | undefined = cacheIterator
+          .next()
+          .value?.at(0);
         if (overflowRowI != null) {
-          this.resourceRecordCacheIndexesByExpiration.splice(this.resourceRecordCacheIndexesByExpiration.indexOf(overflowRowI), 1);
+          this.resourceRecordCacheIndexesByExpiration.splice(
+            this.resourceRecordCacheIndexesByExpiration.indexOf(overflowRowI),
+            1,
+          );
           this.resourceRecordCache.deleteRow(overflowRowI);
         }
       }
@@ -132,7 +133,8 @@ class ResourceRecordCache extends EventTarget {
       const foundRowIs = this.resourceRecordCache.whereRows(indexes, keys);
       for (const foundRowI of foundRowIs) {
         this.resourceRecordCache.deleteRow(foundRowI);
-        const expirationIndex = this.resourceRecordCacheIndexesByExpiration.indexOf(foundRowI);
+        const expirationIndex =
+          this.resourceRecordCacheIndexesByExpiration.indexOf(foundRowI);
         // If the deleted record was the next to expire, we can reschedule the timer.
         // Otherwise there is no need, as the current timer to delete the earliest expiring record is still valid.
         // This is some nice optimization that will save us some unnecessary sorting, but it will mean that the expiration array is sorted less.
@@ -142,7 +144,10 @@ class ResourceRecordCache extends EventTarget {
           rescheduleTimer = true;
         }
         if (expirationIndex !== -1) {
-          this.resourceRecordCacheIndexesByExpiration.splice(expirationIndex, 1);
+          this.resourceRecordCacheIndexesByExpiration.splice(
+            expirationIndex,
+            1,
+          );
         }
       }
     }
@@ -173,14 +178,14 @@ class ResourceRecordCache extends EventTarget {
         indexes.push('class');
         keys.push(record.class);
       }
-      const foundRowIs = this.resourceRecordCache.whereRows(
-        indexes,
-        keys
-      );
+      const foundRowIs = this.resourceRecordCache.whereRows(indexes, keys);
       for (const foundRowI of foundRowIs) {
-        const foundResourceRecordRows = this.resourceRecordCache.getRow(foundRowI);
+        const foundResourceRecordRows =
+          this.resourceRecordCache.getRow(foundRowI);
         if (foundResourceRecordRows) {
-          resourceRecords.push(utils.fromCachableResourceRecordRow(foundResourceRecordRows));
+          resourceRecords.push(
+            utils.fromCachableResourceRecordRow(foundResourceRecordRows),
+          );
         }
       }
     }
@@ -190,7 +195,10 @@ class ResourceRecordCache extends EventTarget {
   public getHostnameRelatedResourceRecords(
     hostname: Hostname,
   ): CachableResourceRecord[] {
-    const foundRowIs = this.resourceRecordCache.whereRows("relatedHostname", hostname);
+    const foundRowIs = this.resourceRecordCache.whereRows(
+      ['relatedHostname'],
+      [hostname],
+    );
     const foundResourceRecords = foundRowIs.flatMap((rI) => {
       const row = this.resourceRecordCache.getRow(rI);
       return row != null ? utils.fromCachableResourceRecordRow(row) : [];
@@ -216,18 +224,17 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimer.cancel();
 
     // Latest expiration is always at the end of the array
-    utils.insertionSort(
-      this.resourceRecordCacheIndexesByExpiration,
-      (a, b) => {
-        const aEntry = this.resourceRecordCache.getRow(a);
-        const bEntry = this.resourceRecordCache.getRow(b);
-        return ((bEntry?.timestamp ?? 0) +
+    utils.insertionSort(this.resourceRecordCacheIndexesByExpiration, (a, b) => {
+      const aEntry = this.resourceRecordCache.getRow(a);
+      const bEntry = this.resourceRecordCache.getRow(b);
+      return (
+        (bEntry?.timestamp ?? 0) +
         (bEntry?.ttl ?? 0) * 1000 -
-        ((aEntry?.timestamp ?? 0) +
-          (aEntry?.ttl ?? 0) * 1000));
-      }
-    );
-    const fastestExpiringRowI = this.resourceRecordCacheIndexesByExpiration.at(-1);
+        ((aEntry?.timestamp ?? 0) + (aEntry?.ttl ?? 0) * 1000)
+      );
+    });
+    const fastestExpiringRowI =
+      this.resourceRecordCacheIndexesByExpiration.at(-1);
     if (fastestExpiringRowI == null) return;
     const record = this.resourceRecordCache.getRow(fastestExpiringRowI);
     if (record == null) return;
@@ -238,7 +245,11 @@ class ResourceRecordCache extends EventTarget {
       async () => {
         // TODO: Requery missing packets
         // TODO: Delete Records and Parse
-        this.dispatchEvent(new MDNSCacheExpiredEvent({ detail: utils.fromCachableResourceRecordRow(record) }));
+        this.dispatchEvent(
+          new MDNSCacheExpiredEvent({
+            detail: utils.fromCachableResourceRecordRow(record),
+          }),
+        );
         this.resourceRecordCache.deleteRow(fastestExpiringRowI);
         // As the timer is always set to the last element, we can assume that the element we are working on is always the last
         this.resourceRecordCacheIndexesByExpiration.splice(-1, 1);

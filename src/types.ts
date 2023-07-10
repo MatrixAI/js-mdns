@@ -44,7 +44,7 @@ type Port = Opaque<'Port', number>;
  */
 type Address = Opaque<'Address', string>;
 
-type ServiceConstructor = {
+type ServiceOptions = {
   name: string;
   type: string;
   protocol: 'udp' | 'tcp';
@@ -55,12 +55,13 @@ type ServiceConstructor = {
 type Service = {
   hostname: Hostname;
   hosts: Host[];
-} & ServiceConstructor;
+} & ServiceOptions;
 
 type NetworkAddress = {
   address: string;
   family: 'IPv4' | 'IPv6';
   internal: boolean;
+  netmask: string;
 };
 
 type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;
@@ -73,7 +74,7 @@ export type {
   Hostname,
   Port,
   Address,
-  ServiceConstructor,
+  ServiceOptions,
   Service,
   NetworkAddress,
   NetworkInterfaces,

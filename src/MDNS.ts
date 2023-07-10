@@ -3,7 +3,7 @@ import type {
   Hostname,
   Port,
   Service,
-  ServiceConstructor,
+  ServiceOptions,
   NetworkInterfaces,
   NetworkAddress,
 } from './types';

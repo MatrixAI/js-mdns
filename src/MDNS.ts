@@ -50,13 +50,13 @@ class MDNS extends EventTarget {
     | NetworkInterfaces
     | PromiseLike<NetworkInterfaces>;
 
-  protected services: Array<Service> = [];
   protected localRecordCache: Array<ResourceRecord> = [];
   protected localRecordCacheDirty = true;
-  // TODO: cache needs to be LRU to prevent DoS
+  protected localServices: Map<Hostname, Service> = new Map();
+
   protected networkRecordCache: ResourceRecordCache =
     ResourceRecordCache.createMDNSCache();
-  protected networkServices: Map<string, Service> = new Map();
+  protected networkServices: Map<Hostname, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<
     dgram.Socket,
@@ -426,7 +426,7 @@ class MDNS extends EventTarget {
     if (this.localRecordCacheDirty) {
       this.localRecordCacheDirty = false;
       this.localRecordCache = utils.toServiceResourceRecords(
-        this.services,
+        [...this.localServices.values()],
         this._hostname,
       );
     }
@@ -541,15 +541,15 @@ class MDNS extends EventTarget {
     this.networkRecordCache.set(cachableResourceRecords);
 
     // We parse the resource records to figure out what service fdqns have been dirtied
-    const dirtiedServiceFdqns: string[] = [];
+    const dirtiedServiceFdqns: Hostname[] = [];
     for (const resourceRecord of resourceRecords) {
       if (resourceRecord.type === RType.SRV || resourceRecord.type === RType.TXT) {
-        dirtiedServiceFdqns.push(resourceRecord.name);
+        dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
       } else if (
         resourceRecord.type === RType.PTR &&
         resourceRecord.name !== '_services._dns-sd._udp.local'
       ) {
-        dirtiedServiceFdqns.push(resourceRecord.data);
+        dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
       } else if (resourceRecord.type === RType.A || resourceRecord.type === RType.AAAA) {
         const relatedResourceRecords =
           this.networkRecordCache.getHostnameRelatedResourceRecords(
@@ -557,7 +557,7 @@ class MDNS extends EventTarget {
           );
         for (const relatedResourceRecord of relatedResourceRecords) {
           if (relatedResourceRecord.type === RType.SRV) {
-            dirtiedServiceFdqns.push(relatedResourceRecord.name);
+            dirtiedServiceFdqns.push(relatedResourceRecord.name as Hostname);
           }
         }
       }
@@ -656,16 +656,16 @@ class MDNS extends EventTarget {
 
   // We processed expired records here. Note that this also processes records of TTL 0, as they expire after 1 second as per spec.
   private async processExpiredResourceRecords(resourceRecord: CachableResourceRecord) {
-    const dirtiedServiceFdqns: string[] = [];
+    const dirtiedServiceFdqns: Hostname[] = [];
 
     // Processing record to find related fdqns
     if (resourceRecord.type === RType.SRV || resourceRecord.type === RType.TXT) {
-      dirtiedServiceFdqns.push(resourceRecord.name);
+      dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
     } else if (
       resourceRecord.type === RType.PTR &&
       resourceRecord.name !== '_services._dns-sd._udp.local'
     ) {
-      dirtiedServiceFdqns.push(resourceRecord.data);
+      dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
     } else if (resourceRecord.type === RType.A || resourceRecord.type === RType.AAAA) {
       const relatedResourceRecords =
         this.networkRecordCache.getHostnameRelatedResourceRecords(
@@ -673,7 +673,7 @@ class MDNS extends EventTarget {
         );
       for (const relatedResourceRecord of relatedResourceRecords) {
         if (relatedResourceRecord.type === RType.SRV) {
-          dirtiedServiceFdqns.push(relatedResourceRecord.name);
+          dirtiedServiceFdqns.push(relatedResourceRecord.name as Hostname);
         }
       }
     }
@@ -701,7 +701,7 @@ class MDNS extends EventTarget {
       0,
     );
     const toServiceResourceRecords = utils.toServiceResourceRecords(
-      this.services,
+      this.localServices,
       this._hostname,
       true,
       0,
@@ -725,13 +725,6 @@ class MDNS extends EventTarget {
     // await this.socketClose();
   }
 
-  public async destroy(): Promise<void> {
-    await this.stop();
-    this.localRecordCacheDirty = true;
-    this.localRecordCache = [];
-    this.services = [];
-  }
-
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
   public registerService(serviceOptions: ServiceOptions) {
     const service: Service = {
@@ -740,7 +733,10 @@ class MDNS extends EventTarget {
       ...serviceOptions,
     };
 
-    this.services.push(service);
+    const serviceDomain = `_${service.type}._${service.protocol}.local` as Hostname;
+    const fdqn = `${service.name}.${serviceDomain}` as Hostname;
+
+    this.localServices.set(fdqn, service);
     this.localRecordCacheDirty = true;
     const advertisePacket: Packet = {
       id: 0,
@@ -766,11 +762,13 @@ class MDNS extends EventTarget {
     type: string;
     protocol: 'udp' | 'tcp';
   }) {
-    const serviceIndex = this.services.findIndex(
-      (s) => s.name === name && s.type === type && s.protocol === protocol,
-    );
-    if (serviceIndex === -1) throw new Error('Service not found'); // Make this an mdns error later
-    const removedServices = this.services.splice(serviceIndex, 1);
+    const serviceDomain = `_${type}._${protocol}.local` as Hostname;
+    const fdqn = `${name}.${serviceDomain}` as Hostname;
+
+    const foundService = this.localServices.get(fdqn);
+    if (foundService == null) return;
+
+    this.localServices.delete(fdqn);
     this.localRecordCacheDirty = true;
     const advertisePacket: Packet = {
       id: 0,
@@ -781,7 +779,7 @@ class MDNS extends EventTarget {
       },
       questions: [],
       answers: utils.toServiceResourceRecords(
-        removedServices,
+        [foundService],
         this._hostname,
         true,
         0,

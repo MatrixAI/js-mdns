@@ -1,4 +1,4 @@
-import { OPTRecord, ResourceRecord } from "./dns";
+import { OPTRecord, ResourceRecord, RType } from './dns';
 
 /**
  * Opaque types are wrappers of existing types
@@ -60,12 +60,10 @@ type Service = {
 type NetworkAddress = {
   address: string;
   family: 'IPv4' | 'IPv6';
+  internal: boolean;
 };
 
-type NetworkInterfaces = Record<
-  string,
-  Array<NetworkAddress> | undefined
->;
+type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;
 
 export type {
   Opaque,

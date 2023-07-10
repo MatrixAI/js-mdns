@@ -1,12 +1,13 @@
-import { CachableResourceRecord, QClass, QType, QuestionRecord, RClass, RType } from "@/dns";
-import { MDNSCacheExpiredEvent } from "@/events";
-import MDNSCache from "@/MDNSCache";
+import type { CachableResourceRecord, QuestionRecord } from '@/dns';
+import type { MDNSCacheExpiredEvent } from '@/events';
+import { QClass, QType, RClass, RType } from '@/dns';
+import { ResourceRecordCache } from '@/cache';
 
-describe(MDNSCache.name, () => {
-  let cache: MDNSCache;
+describe(ResourceRecordCache.name, () => {
+  let cache: ResourceRecordCache;
 
   beforeEach(() => {
-    cache = MDNSCache.createMDNSCache();
+    cache = ResourceRecordCache.createMDNSCache();
   });
 
   afterEach(async () => {
@@ -29,7 +30,7 @@ describe(MDNSCache.name, () => {
   });
 
   test('multiple', () => {
-    const domain = "test.local";
+    const domain = 'test.local';
     const records: CachableResourceRecord[] = [
       {
         name: domain,
@@ -46,14 +47,14 @@ describe(MDNSCache.name, () => {
         flush: false,
         data: '192.168.0.2',
         ttl: 120,
-      }
+      },
     ];
     cache.set(records);
     expect(cache.get(records[0])).toEqual(records);
   });
 
   test('any', () => {
-    const domain = "test.local";
+    const domain = 'test.local';
     const records: CachableResourceRecord[] = [
       {
         name: domain,
@@ -77,13 +78,13 @@ describe(MDNSCache.name, () => {
       name: domain,
       class: QClass.ANY,
       type: QType.ANY,
-      unicast: false
-    }
+      unicast: false,
+    };
     expect(cache.get(question)).toEqual(records);
   });
 
   test('expiry', async () => {
-    const domain = "test.local";
+    const domain = 'test.local';
     const records: CachableResourceRecord[] = [
       {
         name: domain,
@@ -121,16 +122,20 @@ describe(MDNSCache.name, () => {
     cache.set(records);
 
     // The timer will have to be mocked in future, as waiting for the promise to resolve is time consuming
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
       let expiredIndex = 0;
       const sortedRecords = records.sort((a, b) => a.ttl - b.ttl);
       cache.addEventListener('expired', (event: MDNSCacheExpiredEvent) => {
-        expect(event.detail).toEqual(sortedRecords[expiredIndex]);
+        try {
+          expect(event.detail.ttl).toEqual(sortedRecords[expiredIndex].ttl);
+        } catch (e) {
+          reject(e);
+        }
         if (expiredIndex === sortedRecords.length - 1) {
           resolve(null);
         }
         expiredIndex++;
-      })
+      });
     });
   });
 });

@@ -59,10 +59,8 @@ const FC_AAAA_RECORD = fc.record({
   data: fc
     .ipV6()
     .filter((ip) => ip.indexOf('.') === -1)
-    .chain((ip) =>
-      fc.constant(parseIPv6(generateIPv6(ip)).data),
-    )
-    // filter out mapped ipv6 addresses
+    .chain((ip) => fc.constant(parseIPv6(generateIPv6(ip)).data)),
+  // Filter out mapped ipv6 addresses
 });
 
 const FC_A_RECORD = fc.record({
@@ -90,8 +88,10 @@ const FC_TXT_RECORD = fc.record({
   class: fc.constant(RClass.IN),
   ttl: FC_UINT32,
   data: fc.dictionary(
-    fc.unicodeString({ minLength: 1 }).filter((str) => str.indexOf("=") === -1 && str !== "__proto__"),
-    fc.unicodeString().filter((str) => str.indexOf("=") === -1)
+    fc
+      .unicodeString({ minLength: 1 })
+      .filter((str) => str.indexOf('=') === -1 && str !== '__proto__'),
+    fc.unicodeString().filter((str) => str.indexOf('=') === -1),
   ),
 });
 

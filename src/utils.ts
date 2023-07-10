@@ -11,6 +11,7 @@ import type {
   ResourceRecord,
   QuestionRecord,
   QType,
+  CachableResourceRecord,
 } from '@/dns';
 import dns from 'dns';
 import os from 'os';
@@ -306,8 +307,6 @@ function resolvesZeroIP(host: Host): Host {
   }
 }
 
-
-
 // Default ResourceRecord ttl is 120 seconds
 function toHostResourceRecords(
   hosts: Host[],
@@ -387,21 +386,6 @@ function toServiceResourceRecords(
   });
 }
 
-function insertionSort<T>(
-  arr: T[],
-  compare: (a: T, b: T) => number,
-) {
-  for (let i = 1; i < arr.length; i++) {
-    const temp = arr[i];
-    let j = i - 1;
-    while (j >= 0 && compare(arr[j], temp) > 0) {
-      arr[j + 1] = arr[j];
-      j--;
-    }
-    arr[j + 1] = temp;
-  }
-}
-
 export {
   isIPv4,
   isIPv6,
@@ -425,5 +409,4 @@ export {
   toHostResourceRecords,
   isService,
   toServiceResourceRecords,
-  insertionSort
 };

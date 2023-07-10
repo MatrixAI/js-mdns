@@ -35,7 +35,9 @@
     "@matrixai/contexts": "^1.1.0",
     "@matrixai/errors": "^1.1.7",
     "@matrixai/logger": "^3.1.0",
+    "@matrixai/table": "^1.1.0",
     "@matrixai/timer": "^1.1.1",
+    "canonicalize": "^2.0.0",
     "ip-num": "^1.5.1"
   },
   "devDependencies": {

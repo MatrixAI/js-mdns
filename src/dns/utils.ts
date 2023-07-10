@@ -15,7 +15,6 @@ import type {
 } from './types';
 import { IPv6 } from 'ip-num';
 import { RType } from './types';
-
 import * as errors from './errors';
 
 // Packet Flag Masks
@@ -624,7 +623,9 @@ function generateSRVRecordData(data: SRVRecordValue): Uint8Array {
   return concatUInt8Array(buffer, generateLabels(data.target));
 }
 
-function isStringResourceRecord(record: ResourceRecord): record is StringRecord {
+function isStringResourceRecord(
+  record: ResourceRecord,
+): record is StringRecord {
   return isStringRType(record.type);
 }
 
@@ -632,13 +633,22 @@ function isStringRType(type: RType): type is StringRecord['type'] {
   return [RType.A, RType.AAAA, RType.CNAME, RType.PTR].includes(type);
 }
 
-
-function isCachableResourceRecord(record: ResourceRecord): record is CachableResourceRecord {
+function isCachableResourceRecord(
+  record: ResourceRecord,
+): record is CachableResourceRecord {
   return isCachableRType(record.type);
 }
 
 function isCachableRType(type: RType): type is CachableResourceRecord['type'] {
-  return [RType.A, RType.AAAA, RType.CNAME, RType.PTR, RType.NSEC, RType.TXT, RType.SRV].includes(type);
+  return [
+    RType.A,
+    RType.AAAA,
+    RType.CNAME,
+    RType.PTR,
+    RType.NSEC,
+    RType.TXT,
+    RType.SRV,
+  ].includes(type);
 }
 
 export {
@@ -664,5 +674,5 @@ export {
   generateTXTRecordData,
   generateSRVRecordData,
   isStringResourceRecord,
-  isCachableResourceRecord
+  isCachableResourceRecord,
 };

@@ -89,6 +89,7 @@ class MDNS extends EventTarget {
   protected _hostname: Hostname;
 
   protected queries: Map<string, PromiseCancellable<void>> = new Map();
+  protected advertisements: Map<string, PromiseCancellable<void>> = new Map();
 
   public constructor({
     resolveHostname = utils.resolveHostname,
@@ -346,7 +347,7 @@ class MDNS extends EventTarget {
   private advertise(packet: Packet, socket?: dgram.Socket) {
     const advertisement = async () => {
       try {
-        await this.sendPacket(packet);
+        await this.sendPacket(packet, socket);
       } catch (err) {
         if (err.code !== 'ERR_SOCKET_DGRAM_NOT_RUNNING') {
           // TODO: deal with this
@@ -753,11 +754,11 @@ class MDNS extends EventTarget {
         type: PacketType.RESPONSE,
       },
       questions: [],
-      answers: utils.toServiceResourceRecords([service], this._hostname, true),
+      answers: utils.toServiceResourceRecords([service], this._hostname, false),
       additionals: [],
       authorities: [],
     };
-    // This.advertise(advertisePacket);
+    this.advertise(advertisePacket);
   }
 
   public unregisterService({
@@ -788,13 +789,13 @@ class MDNS extends EventTarget {
       answers: utils.toServiceResourceRecords(
         [foundService],
         this._hostname,
-        true,
+        false,
         0,
       ),
       additionals: [],
       authorities: [],
     };
-    // This.advertise(advertisePacket);
+    this.advertise(advertisePacket);
   }
 
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.

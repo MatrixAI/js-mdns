@@ -1,10 +1,10 @@
-import type { ResourceRecord } from '@/dns';
+import type { CachableResourceRecord, ResourceRecord } from '@/dns';
 
 class MDNSCacheExpiredEvent extends Event {
-  public detail: ResourceRecord;
+  public detail: CachableResourceRecord;
   constructor(
     options: EventInit & {
-      detail: ResourceRecord;
+      detail: CachableResourceRecord;
     },
   ) {
     super('expired', options);

@@ -31,6 +31,10 @@ class ResourceRecordCache extends EventTarget {
   // The max amount of records that can be stored.
   private _max: number;
 
+  public get max(): number {
+    return this.max;
+  }
+
   public static createMDNSCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
   }: {

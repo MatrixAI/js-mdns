@@ -1,14 +1,13 @@
 import type { QuestionRecord, CachableResourceRecord } from '@/dns';
 import type { CachableResourceRecordRow } from './types';
 import type { Hostname } from '@/types';
-import { CreateDestroy } from '@matrixai/async-init/dist/CreateDestroy';
+import { CreateDestroy, ready } from '@matrixai/async-init/dist/CreateDestroy';
 import { Timer } from '@matrixai/timer';
 import Table from '@matrixai/table';
 import canonicalize from 'canonicalize';
 import { QClass, QType, RType } from '@/dns';
 import { MDNSCacheExpiredEvent } from './events';
 import * as utils from './utils';
-import { ready } from '@matrixai/async-init/dist/StartStop';
 import * as errors from './errors';
 
 interface ResourceRecordCache extends CreateDestroy {}
@@ -38,7 +37,7 @@ class ResourceRecordCache extends EventTarget {
     return this.max;
   }
 
-  public static createMDNSCache({
+  public static async createMDNSCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
   }: {
     max?: number;

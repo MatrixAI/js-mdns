@@ -55,8 +55,7 @@ class MDNS extends EventTarget {
   protected localRecordCacheDirty = true;
   protected localServices: Map<Hostname, Service> = new Map();
 
-  protected networkRecordCache: ResourceRecordCache =
-    ResourceRecordCache.createMDNSCache();
+  protected networkRecordCache: ResourceRecordCache;
   protected networkServices: Map<Hostname, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<
@@ -337,6 +336,7 @@ class MDNS extends EventTarget {
     this._port = port;
     this._groups = groups;
     this._hostname = hostname as Hostname;
+    this.networkRecordCache = await ResourceRecordCache.createMDNSCache();
     this.networkRecordCache.addEventListener("expired", (event: MDNSCacheExpiredEvent) => this.processExpiredResourceRecords(event.detail));
 
     // We have to figure out 1 socket at a time

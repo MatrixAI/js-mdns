@@ -5,6 +5,7 @@ import type {
   Service,
   ServiceConstructor,
   NetworkInterfaces,
+  NetworkAddress,
 } from './types';
 import type {
   CachableResourceRecord,
@@ -18,7 +19,7 @@ import { StartStop, ready } from '@matrixai/async-init/dist/StartStop';
 import { Timer } from '@matrixai/timer';
 import Logger from '@matrixai/logger';
 import Table from '@matrixai/table';
-import { IPv6 } from 'ip-num';
+import { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
 import * as utils from './utils';
 import * as errors from './errors';
 import {
@@ -68,13 +69,17 @@ class MDNS extends EventTarget {
       group: Host;
     }
   > = new WeakMap();
-  protected hostTable: Table<{
+  protected socketHostTable: Table<{
     networkInterfaceName: string;
-    host: Host;
-    udpType: 'udp4' | 'udp6';
+    address: string;
+    family: 'IPv4' | 'IPv6';
+    netmask: string;
   }> = new Table(
-    ['networkInterfaceName', 'host', 'udpType'],
-    ['networkInterfaceName'],
+    ['networkInterfaceName', 'address', 'family'],
+    [
+      ['networkInterfaceName'],
+      ['address']
+    ],
   );
   protected _host: Host;
   protected _port: Port;
@@ -196,7 +201,8 @@ class MDNS extends EventTarget {
       for (const networkInterfaceName in networkInterfaces) {
         const networkAddresses = networkInterfaces[networkInterfaceName];
         if (networkAddresses == null) continue;
-        for (const { address, family } of networkAddresses) {
+        for (const networkAddress of networkAddresses) {
+          const { address, family } = networkAddress;
           if (host_ === '::' && !ipv6Only) {
             // Dual stack `::` allows both IPv4 and IPv6
             socketHosts.push([
@@ -204,27 +210,12 @@ class MDNS extends EventTarget {
               family === 'IPv4' ? 'udp4' : 'udp6',
               networkInterfaceName,
             ]);
-            this.hostTable.insertRow({
-              host: address as Host,
-              udpType: family === 'IPv4' ? 'udp4' : 'udp6',
-              networkInterfaceName,
-            });
           } else if (host_ === '::' && ipv6Only && family === 'IPv6') {
             // Dual stack `::` with `ipv6Only` only allows IPv6 hosts
             socketHosts.push([address as Host, 'udp6', networkInterfaceName]);
-            this.hostTable.insertRow({
-              host: address as Host,
-              udpType: 'udp6',
-              networkInterfaceName,
-            });
           } else if (udpType_ === 'udp4' && family === 'IPv4') {
             // If `0.0.0.0`
             socketHosts.push([address as Host, udpType_, networkInterfaceName]);
-            this.hostTable.insertRow({
-              host: address as Host,
-              udpType: udpType_,
-              networkInterfaceName,
-            });
           } else if (
             udpType_ === 'udp6' &&
             !utils.isIPv4MappedIPv6(host_) &&
@@ -232,11 +223,6 @@ class MDNS extends EventTarget {
           ) {
             // If `::0`
             socketHosts.push([address as Host, udpType_, networkInterfaceName]);
-            this.hostTable.insertRow({
-              host: address as Host,
-              udpType: udpType_,
-              networkInterfaceName,
-            });
           } else if (
             udpType_ === 'udp6' &&
             utils.isIPv4MappedIPv6(host_) &&
@@ -248,12 +234,11 @@ class MDNS extends EventTarget {
               udpType_,
               networkInterfaceName,
             ]);
-            this.hostTable.insertRow({
-              host: ('::ffff:' + address) as Host,
-              udpType: udpType_,
-              networkInterfaceName,
-            });
           }
+          this.socketHostTable.insertRow({
+            ...networkAddress,
+            networkInterfaceName
+          });
         }
       }
       if (socketHosts.length < 1) {
@@ -263,11 +248,11 @@ class MDNS extends EventTarget {
         );
       }
     } else {
-      this.hostTable.insertRow({
-        host: host_,
-        udpType: udpType_,
-        networkInterfaceName: '',
-      });
+      // this.networkInterfaceTable.insertRow({
+      //   address: host_,
+      //   udpType: udpType_,
+      //   networkInterfaceName: '',
+      // });
       socketHosts.push([host_, udpType_, '']);
     }
 
@@ -299,7 +284,7 @@ class MDNS extends EventTarget {
         const socketSend = utils.promisify(socket.send).bind(socket);
         const { p: errorP, rejectP: rejectErrorP } = utils.promise();
         socket.once('error', rejectErrorP);
-        const socketBindP = socketBind(port, linkLocalGroup);
+        const socketBindP = socketBind(port);
         try {
           await Promise.race([socketBindP, errorP]);
         } catch (e) {
@@ -326,6 +311,7 @@ class MDNS extends EventTarget {
         );
         socket.addListener('error', (...p) => this.handleSocketError(...p));
         socket.setMulticastInterface(linkLocalSocketHost);
+        socket.addMembership(linkLocalGroup, linkLocalSocketHost);
         socket.setMulticastTTL(MDNS_TTL);
         socket.setTTL(MDNS_TTL);
         socket.setMulticastLoopback(true);
@@ -379,6 +365,33 @@ class MDNS extends EventTarget {
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
+
+    // We check if the received message is from the same subnet in order to determine if we should respond.
+    // TODO: The parsed result can be cached in future.
+    try {
+      const addressRowI = this.socketHostTable.whereRows(['address'], [this.socketMap.get(socket)?.host]).at(0);
+      const address = addressRowI ? this.socketHostTable.getRow(addressRowI) : undefined;
+      if (address != null) {
+        let mask: IPv4Mask | IPv6Mask;
+        let localAddress: IPv4 | IPv6;
+        let remoteAddress: IPv4 | IPv6;
+        if (address.family === "IPv4") {
+          localAddress = IPv4.fromString(address.address);
+          remoteAddress = IPv4.fromString(rinfo.address);
+          mask = new IPv4Mask(address.netmask);
+        }
+        else {
+          localAddress = IPv6.fromString(address.address);
+          remoteAddress = IPv6.fromString(rinfo.address.split('%', 2)[0]);
+          mask = new IPv6Mask(address.netmask);
+        }
+        if ((mask.getValue() & remoteAddress.getValue()) !== (mask.getValue() & localAddress.getValue())) return;
+      }
+    }
+    catch(_err) {
+      this.logger.warn("An error occurred in parsing a socket's subnet, responding anyway.");
+    }
+
     let packet: Packet | undefined;
     try {
       packet = parsePacket(msg);
@@ -405,26 +418,26 @@ class MDNS extends EventTarget {
     const networkInterfaceName =
       this.socketMap.get(socket)?.networkInterfaceName;
 
-    const ips = this.hostTable
-      .whereRows('networkInterfaceName', networkInterfaceName)
-      .flatMap((rI) => this.hostTable.getRow(rI)?.host ?? []);
+    const ips = this.socketHostTable
+      .whereRows(['networkInterfaceName'], [networkInterfaceName])
+      .flatMap((rI) => this.socketHostTable.getRow(rI)?.address ?? []);
 
     if (this.localRecordCacheDirty) {
       this.localRecordCacheDirty = false;
-      const hostResourceRecords = utils.toHostResourceRecords(
-        ips,
-        this._hostname,
-      );
-      const toServiceResourceRecords = utils.toServiceResourceRecords(
+      this.localRecordCache = utils.toServiceResourceRecords(
         this.services,
         this._hostname,
       );
-      this.localRecordCache =
-        toServiceResourceRecords.concat(hostResourceRecords);
     }
 
+    const hostResourceRecords = utils.toHostResourceRecords(
+      ips as Host[],
+      this._hostname,
+    );
+    const hostIncludedResourceRecords = this.localRecordCache.concat(hostResourceRecords);
+
     for (const question of packet.questions) {
-      const foundRecord = this.localRecordCache.find(
+      const foundRecord = hostIncludedResourceRecords.find(
         (record) =>
           record.name === question.name &&
           ((record.type as number) === question.type ||
@@ -438,7 +451,7 @@ class MDNS extends EventTarget {
         let additionalResourceRecordCache: ResourceRecord[] = [];
         // RFC 6763 12.1. Additionals in PTR
         if (question.type === QType.PTR) {
-          additionalResourceRecordCache = this.localRecordCache.filter(
+          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
             (record) =>
               (record.type === RType.SRV && record.name === foundRecord.data) ||
               (record.type === RType.TXT && record.name === foundRecord.data) ||
@@ -448,19 +461,19 @@ class MDNS extends EventTarget {
         }
         // RFC 6763 12.2. Additionals in SRV
         else if (question.type === QType.SRV) {
-          additionalResourceRecordCache = this.localRecordCache.filter(
+          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
             (record) => record.type === RType.A || record.type === RType.AAAA,
           );
         }
         // RFC 6762 6.2. Additionals in A
         else if (question.type === QType.A) {
-          additionalResourceRecordCache = this.localRecordCache.filter(
+          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
             (record) => record.type === RType.AAAA,
           );
         }
         // RFC 6762 6.2. Additionals in AAAA
         else if (question.type === QType.AAAA) {
-          additionalResourceRecordCache = this.localRecordCache.filter(
+          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
             (record) => record.type === RType.A,
           );
         }
@@ -692,7 +705,7 @@ class MDNS extends EventTarget {
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
   public async stop(): Promise<void> {
     const hostResourceRecords = utils.toHostResourceRecords(
-      [...this.hostTable].flatMap((e) => e[1].host),
+      [...this.socketHostTable].flatMap((e) => e[1].address),
       this._hostname,
       true,
       0,

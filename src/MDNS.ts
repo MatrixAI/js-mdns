@@ -87,6 +87,9 @@ class MDNS extends EventTarget {
   protected _groups: Array<Host>;
   protected _hostname: Hostname;
 
+  protect
+
+
   public constructor({
     resolveHostname = utils.resolveHostname,
     getNetworkInterfaces = utils.getNetworkInterfaces,
@@ -340,10 +343,10 @@ class MDNS extends EventTarget {
   }
 
   // Use set of timers instead instead of dangling
-  private advertise(packet: Packet, socket: dgram.Socket) {
+  private advertise(packet: Packet, socket?: dgram.Socket) {
     const advertisement = async () => {
       try {
-        await this.sendPacket(packet, socket);
+        await this.sendPacket(packet);
       } catch (err) {
         if (err.code !== 'ERR_SOCKET_DGRAM_NOT_RUNNING') {
           // TODO: deal with this
@@ -355,10 +358,14 @@ class MDNS extends EventTarget {
     });
   }
 
-  private async sendPacket(packet: Packet, socket: dgram.Socket) {
+  /**
+   * If the socket is not provided, the message will be sent to all sockets.
+   */
+  private async sendPacket(packet: Packet, socket?: dgram.Socket) {
     const message = generatePacket(packet);
-    const socketWrapper = this.socketMap.get(socket);
-    await socketWrapper?.send(message, this._port, socketWrapper.group);
+    let sockets = this.sockets;
+    if (socket != null) sockets = [socket];
+    await Promise.all(sockets.map(socket => this.socketMap.get(socket)?.send(message, this._port, this.socketMap.get(socket)?.group)));
   }
 
   private async handleSocketMessage(

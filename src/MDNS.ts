@@ -34,6 +34,7 @@ import {
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import { MDNSCacheExpiredEvent, ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
+import { PromiseCancellable } from '@matrixai/async-cancellable';
 
 const MDNS_TTL = 255;
 
@@ -87,8 +88,7 @@ class MDNS extends EventTarget {
   protected _groups: Array<Host>;
   protected _hostname: Hostname;
 
-  protect
-
+  protected queries: Map<string, PromiseCancellable<void>> = new Map();
 
   public constructor({
     resolveHostname = utils.resolveHostname,
@@ -798,7 +798,7 @@ class MDNS extends EventTarget {
   }
 
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
-  public async *query({
+  public startQuery({
     type,
     protocol,
     minDelay = 1,
@@ -828,16 +828,34 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-    let delay = minDelay;
-    while (true) {
-      // Await this.sendPacket(queryPacket);
-      yield delay;
-      if (delay < maxDelay) {
-        delay *= 2;
-      } else if (delay !== maxDelay) {
-        delay = maxDelay;
-      }
-    }
+
+    let timer: Timer | undefined;
+    let delay = minDelay * 1000;
+
+    const abortController = new AbortController();
+    abortController.signal.addEventListener('abort', () => timer?.cancel());
+
+    const send = async () => {
+      await this.sendPacket(queryPacket);
+      delay *= 2;
+      if (delay > maxDelay * 1000) delay = maxDelay * 1000;
+      timer = new Timer(send, delay);
+    };
+
+    const promise = PromiseCancellable.from(send(), abortController);
+
+    this.queries.set(serviceDomain, promise);
+  }
+
+  public stopQuery({
+    type,
+    protocol,
+  }: {
+    type: string;
+    protocol: 'udp' | 'tcp';
+  }) {
+    const serviceDomain = `_${type}._${protocol}.local`;
+    this.queries.get(serviceDomain)?.cancel();
   }
 }
 

@@ -5,7 +5,6 @@ import type {
   Service,
   ServiceOptions,
   NetworkInterfaces,
-  NetworkAddress,
 } from './types';
 import type {
   CachableResourceRecord,
@@ -33,7 +32,7 @@ import {
   RType,
 } from './dns';
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
-import { ResourceRecordCache } from './cache';
+import { MDNSCacheExpiredEvent, ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 
 const MDNS_TTL = 255;
@@ -57,6 +56,7 @@ class MDNS extends EventTarget {
   // TODO: cache needs to be LRU to prevent DoS
   protected networkRecordCache: ResourceRecordCache =
     ResourceRecordCache.createMDNSCache();
+  protected networkServices: Map<string, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<
     dgram.Socket,
@@ -333,6 +333,7 @@ class MDNS extends EventTarget {
     this._port = port;
     this._groups = groups;
     this._hostname = hostname as Hostname;
+    this.networkRecordCache.addEventListener("expired", (event: MDNSCacheExpiredEvent) => this.processExpiredResourceRecords(event.detail));
 
     // We have to figure out 1 socket at a time
     // And we have to decide what we are doing here
@@ -529,67 +530,42 @@ class MDNS extends EventTarget {
     resourceRecords: ResourceRecord[],
     socket: dgram.Socket,
   ) {
-    // [0] is the service fdqn, [1] is if it is to be removed (flush && ttl === 0)
-    const allDirtiedServiceFdqns: Map<string, boolean> = new Map();
+    // Filter out all records to only contain ones that are cachable (excludes NSEC, etc.)
+    const cachableResourceRecords = resourceRecords.filter(isCachableResourceRecord);
 
-    // TODO: shared records do not need flush to be set for an update.
-    // Set all appendable network resource records
-    const appendedResourceRecords = resourceRecords.filter(
-      (record): record is CachableResourceRecord =>
-        isCachableResourceRecord(record) && record.ttl !== 0,
-    );
-    this.networkRecordCache.set(appendedResourceRecords);
+    // Records with flush bit set will replace a set of records with 1 singular record
+    const flushedResourceRecords = cachableResourceRecords.filter((record) => record.flush);
+    this.networkRecordCache.delete(flushedResourceRecords);
 
-    // This is for the purpose that ipv4 is flushed. As we return the hosts as an array in the service event, this is useful for getting the freshest information.
-    let flushedIpv4: Hostname | undefined;
-    let flushedIpv6: Hostname | undefined;
+    // Then set the new records. This order is crucial as to make sure that we don't delete any of the records we are newly setting.
+    this.networkRecordCache.set(cachableResourceRecords);
 
-    for (const record of resourceRecords) {
-      const dirtiedServiceFdqns: string[] = [];
-
-      // Processing records to find fdqns
-      if (record.type === RType.SRV || record.type === RType.TXT) {
-        dirtiedServiceFdqns.push(record.name);
+    // We parse the resource records to figure out what service fdqns have been dirtied
+    const dirtiedServiceFdqns: string[] = [];
+    for (const resourceRecord of resourceRecords) {
+      if (resourceRecord.type === RType.SRV || resourceRecord.type === RType.TXT) {
+        dirtiedServiceFdqns.push(resourceRecord.name);
       } else if (
-        record.type === RType.PTR &&
-        record.name !== '_services._dns-sd._udp.local'
+        resourceRecord.type === RType.PTR &&
+        resourceRecord.name !== '_services._dns-sd._udp.local'
       ) {
-        dirtiedServiceFdqns.push(record.data);
-      } else if (record.type === RType.A || record.type === RType.AAAA) {
+        dirtiedServiceFdqns.push(resourceRecord.data);
+      } else if (resourceRecord.type === RType.A || resourceRecord.type === RType.AAAA) {
         const relatedResourceRecords =
           this.networkRecordCache.getHostnameRelatedResourceRecords(
-            record.name as Hostname,
+            resourceRecord.name as Hostname,
           );
         for (const relatedResourceRecord of relatedResourceRecords) {
           if (relatedResourceRecord.type === RType.SRV) {
             dirtiedServiceFdqns.push(relatedResourceRecord.name);
           }
         }
-        if (record.type === RType.A && record.flush) {
-          flushedIpv4 = record.name as Hostname;
-        } else if (record.type === RType.AAAA && record.flush) {
-          flushedIpv6 = record.name as Hostname;
-        }
-      }
-
-      // Setting dirtied fdqn
-      for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
-        if (allDirtiedServiceFdqns.get(dirtiedServiceFdqn) !== true) {
-          allDirtiedServiceFdqns.set(
-            dirtiedServiceFdqn,
-            (record as any).ttl === 0,
-          );
-        }
       }
     }
 
-    // Processing dirtied service fdqns
+    // Process the dirtied fdqns to figure out what questions still need to be asked.
     const allRemainingQuestions: QuestionRecord[] = [];
-
-    for (const [
-      dirtiedServiceFdqn,
-      dirtiedServiceFdqnRemoved,
-    ] of allDirtiedServiceFdqns) {
+    for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
       const partialService: Partial<Service> = {};
       const remainingQuestions: Map<QType, QuestionRecord> = new Map();
       remainingQuestions.set(QType.TXT, {
@@ -604,7 +580,6 @@ class MDNS extends EventTarget {
         class: QClass.IN,
         unicast: false,
       });
-      // TODO: Sort by latest inserted first in case shared record
       let responseRecords = this.networkRecordCache.get([
         ...remainingQuestions.values(),
       ]);
@@ -621,7 +596,7 @@ class MDNS extends EventTarget {
           partialService.hostname = responseRecord.data.target as Hostname;
         }
       }
-      if (typeof partialService.hostname === 'undefined') {
+      if (partialService.hostname == null) {
         allRemainingQuestions.push(...remainingQuestions.values());
         continue;
       }
@@ -652,32 +627,13 @@ class MDNS extends EventTarget {
           partialService.hosts.push(responseRecord.data as Host);
         }
       }
+      // We check if the service has been entirely built before dispatching the event that it has been created
       if (utils.isService(partialService)) {
-        if (dirtiedServiceFdqnRemoved) {
-          this.dispatchEvent(
-            new MDNSServiceRemovedEvent({ detail: partialService }),
-          );
-        } else {
-          this.dispatchEvent(new MDNSServiceEvent({ detail: partialService }));
-        }
-      } else if (!dirtiedServiceFdqnRemoved) {
-        allRemainingQuestions.push(...remainingQuestions.values());
+        this.dispatchEvent(new MDNSServiceEvent({ detail: partialService }));
+        this.networkServices.set(dirtiedServiceFdqn, partialService);
       }
+      allRemainingQuestions.push(...remainingQuestions.values());
     }
-
-    // Cleanup removed records
-    const flushedResourceRecords = resourceRecords.filter(
-      (record): record is CachableResourceRecord =>
-        isCachableResourceRecord(record) && record.flush,
-    );
-    this.networkRecordCache.delete(flushedResourceRecords);
-    const removedResourceRecords = resourceRecords.filter(
-      (record): record is CachableResourceRecord =>
-        isCachableResourceRecord(record) && record.ttl === 0,
-    );
-    this.networkRecordCache.set(
-      removedResourceRecords.concat(flushedResourceRecords),
-    );
 
     if (allRemainingQuestions.length !== 0) {
       await this.sendPacket(
@@ -695,6 +651,40 @@ class MDNS extends EventTarget {
         },
         socket,
       );
+    }
+  }
+
+  // We processed expired records here. Note that this also processes records of TTL 0, as they expire after 1 second as per spec.
+  private async processExpiredResourceRecords(resourceRecord: CachableResourceRecord) {
+    const dirtiedServiceFdqns: string[] = [];
+
+    // Processing record to find related fdqns
+    if (resourceRecord.type === RType.SRV || resourceRecord.type === RType.TXT) {
+      dirtiedServiceFdqns.push(resourceRecord.name);
+    } else if (
+      resourceRecord.type === RType.PTR &&
+      resourceRecord.name !== '_services._dns-sd._udp.local'
+    ) {
+      dirtiedServiceFdqns.push(resourceRecord.data);
+    } else if (resourceRecord.type === RType.A || resourceRecord.type === RType.AAAA) {
+      const relatedResourceRecords =
+        this.networkRecordCache.getHostnameRelatedResourceRecords(
+          resourceRecord.name as Hostname,
+        );
+      for (const relatedResourceRecord of relatedResourceRecords) {
+        if (relatedResourceRecord.type === RType.SRV) {
+          dirtiedServiceFdqns.push(relatedResourceRecord.name);
+        }
+      }
+    }
+
+    for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
+      const foundService = this.networkServices.get(dirtiedServiceFdqn);
+      if (foundService == null) continue;
+      this.dispatchEvent(
+        new MDNSServiceRemovedEvent({ detail: foundService }),
+      );
+      this.networkServices.delete(dirtiedServiceFdqn);
     }
   }
 
@@ -743,7 +733,7 @@ class MDNS extends EventTarget {
   }
 
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
-  public registerService(serviceOptions: ServiceConstructor) {
+  public registerService(serviceOptions: ServiceOptions) {
     const service: Service = {
       hostname: this._hostname,
       hosts: [],

@@ -1,5 +1,5 @@
 import type { CachableResourceRecord, QuestionRecord } from '@/dns';
-import type { MDNSCacheExpiredEvent } from '@/events';
+import type { MDNSCacheExpiredEvent } from '@/cache/events';
 import { QClass, QType, RClass, RType } from '@/dns';
 import { ResourceRecordCache } from '@/cache';
 

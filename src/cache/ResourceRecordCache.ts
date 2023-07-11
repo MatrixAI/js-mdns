@@ -1,13 +1,14 @@
 import type { QuestionRecord, CachableResourceRecord } from '@/dns';
 import type { CachableResourceRecordRow } from './types';
 import type { Hostname } from '@/types';
-import { CreateDestroy } from '@matrixai/async-init/dist/CreateDestroy';
+import { CreateDestroy, ready } from '@matrixai/async-init/dist/CreateDestroy';
 import { Timer } from '@matrixai/timer';
 import Table from '@matrixai/table';
 import canonicalize from 'canonicalize';
 import { QClass, QType, RType } from '@/dns';
 import { MDNSCacheExpiredEvent } from './events';
 import * as utils from './utils';
+import * as errors from './errors';
 
 interface ResourceRecordCache extends CreateDestroy {}
 @CreateDestroy()
@@ -31,11 +32,12 @@ class ResourceRecordCache extends EventTarget {
   // The max amount of records that can be stored.
   private _max: number;
 
+  @ready(new errors.ErrorCacheDestroyed())
   public get max(): number {
     return this.max;
   }
 
-  public static createMDNSCache({
+  public static async createMDNSCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
   }: {
     max?: number;
@@ -54,6 +56,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimer.cancel();
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
   public set(records: CachableResourceRecord | CachableResourceRecord[]): void {
     if (!Array.isArray(records)) {
       return this.set([records]);
@@ -112,6 +115,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
   public delete(
     records:
       | (QuestionRecord | CachableResourceRecord)
@@ -161,6 +165,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
   public get(
     records:
       | (QuestionRecord | CachableResourceRecord)
@@ -196,6 +201,7 @@ class ResourceRecordCache extends EventTarget {
     return resourceRecords;
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
   public getHostnameRelatedResourceRecords(
     hostname: Hostname,
   ): CachableResourceRecord[] {
@@ -224,6 +230,7 @@ class ResourceRecordCache extends EventTarget {
     return this.resourceRecordCache.whereRows(indexes, keys).length > 0;
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
   private resourceRecordCacheTimerReset() {
     this.resourceRecordCacheTimer.cancel();
 

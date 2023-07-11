@@ -6,8 +6,8 @@ import { ResourceRecordCache } from '@/cache';
 describe(ResourceRecordCache.name, () => {
   let cache: ResourceRecordCache;
 
-  beforeEach(() => {
-    cache = ResourceRecordCache.createMDNSCache();
+  beforeEach(async () => {
+    cache = await ResourceRecordCache.createMDNSCache();
   });
 
   afterEach(async () => {

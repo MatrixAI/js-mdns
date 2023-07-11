@@ -34,6 +34,8 @@ import {
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import { MDNSCacheExpiredEvent, ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
+import { PromiseCancellable } from '@matrixai/async-cancellable';
+import canonicalize from 'canonicalize';
 
 const MDNS_TTL = 255;
 
@@ -54,8 +56,7 @@ class MDNS extends EventTarget {
   protected localRecordCacheDirty = true;
   protected localServices: Map<Hostname, Service> = new Map();
 
-  protected networkRecordCache: ResourceRecordCache =
-    ResourceRecordCache.createMDNSCache();
+  protected networkRecordCache: ResourceRecordCache;
   protected networkServices: Map<Hostname, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<
@@ -87,8 +88,8 @@ class MDNS extends EventTarget {
   protected _groups: Array<Host>;
   protected _hostname: Hostname;
 
-  protect
-
+  protected queries: Map<string, PromiseCancellable<void>> = new Map();
+  protected advertisements: Map<string, PromiseCancellable<void>> = new Map();
 
   public constructor({
     resolveHostname = utils.resolveHostname,
@@ -336,6 +337,7 @@ class MDNS extends EventTarget {
     this._port = port;
     this._groups = groups;
     this._hostname = hostname as Hostname;
+    this.networkRecordCache = await ResourceRecordCache.createMDNSCache();
     this.networkRecordCache.addEventListener("expired", (event: MDNSCacheExpiredEvent) => this.processExpiredResourceRecords(event.detail));
 
     // We have to figure out 1 socket at a time
@@ -343,19 +345,28 @@ class MDNS extends EventTarget {
   }
 
   // Use set of timers instead instead of dangling
-  private advertise(packet: Packet, socket?: dgram.Socket) {
-    const advertisement = async () => {
-      try {
-        await this.sendPacket(packet);
-      } catch (err) {
-        if (err.code !== 'ERR_SOCKET_DGRAM_NOT_RUNNING') {
-          // TODO: deal with this
-        }
-      }
-    };
-    advertisement().then(async () => {
-      await new Timer(advertisement, 1000);
+  private advertise(packet: Packet, advertisementKey: string, socket?: dgram.Socket) {
+    const advertisement = this.advertisements.get(advertisementKey);
+    if (advertisement != null) {
+      advertisement.cancel();
+    }
+
+    const abortController = new AbortController();
+    let timer: Timer | undefined;
+
+    abortController.signal.addEventListener("abort", () => {
+      timer?.cancel()
+      this.advertisements.delete(advertisementKey)
     });
+
+    const promise = new PromiseCancellable<void>(async (resolve, reject) => {
+      await this.sendPacket(packet, socket).catch(reject);
+      timer = new Timer(() => this.sendPacket(packet, socket).catch(reject), 1000);
+      await timer;
+      resolve();
+    }).finally(() => this.advertisements.delete(advertisementKey));
+
+    this.advertisements.set(advertisementKey, promise);
   }
 
   /**
@@ -739,7 +750,6 @@ class MDNS extends EventTarget {
       hosts: [],
       ...serviceOptions,
     };
-
     const serviceDomain = `_${service.type}._${service.protocol}.local` as Hostname;
     const fdqn = `${service.name}.${serviceDomain}` as Hostname;
 
@@ -753,11 +763,11 @@ class MDNS extends EventTarget {
         type: PacketType.RESPONSE,
       },
       questions: [],
-      answers: utils.toServiceResourceRecords([service], this._hostname, true),
+      answers: utils.toServiceResourceRecords([service], this._hostname, false),
       additionals: [],
       authorities: [],
     };
-    // This.advertise(advertisePacket);
+    this.advertise(advertisePacket, fdqn);
   }
 
   public unregisterService({
@@ -788,17 +798,17 @@ class MDNS extends EventTarget {
       answers: utils.toServiceResourceRecords(
         [foundService],
         this._hostname,
-        true,
+        false,
         0,
       ),
       additionals: [],
       authorities: [],
     };
-    // This.advertise(advertisePacket);
+    this.advertise(advertisePacket, fdqn);
   }
 
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
-  public async *query({
+  public startQuery({
     type,
     protocol,
     minDelay = 1,
@@ -828,16 +838,47 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-    let delay = minDelay;
-    while (true) {
-      // Await this.sendPacket(queryPacket);
-      yield delay;
-      if (delay < maxDelay) {
-        delay *= 2;
-      } else if (delay !== maxDelay) {
-        delay = maxDelay;
-      }
-    }
+
+
+    let timer: Timer | undefined;
+    let delayMilis = minDelay * 1000;
+    const maxDelayMilis = maxDelay * 1000;
+
+    const abortController = new AbortController();
+    abortController.signal.addEventListener('abort', () => {
+      timer?.cancel();
+      this.queries.delete(serviceDomain);
+    });
+
+    const promise = new PromiseCancellable<void>(async (_resolve, reject) => {
+      const rejectP = () => {
+        reject();
+        this.queries.delete(serviceDomain);
+      };
+      await this.sendPacket(queryPacket).catch(rejectP);
+      const setTimer = () => {
+        timer = new Timer(() => {
+          this.sendPacket(queryPacket).catch(rejectP);
+          setTimer();
+        }, delayMilis);
+        delayMilis *= 2;
+        if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
+      };
+      setTimer();
+    }, abortController);
+
+    this.queries.set(serviceDomain, promise);
+  }
+
+  public stopQuery({
+    type,
+    protocol,
+  }: {
+    type: string;
+    protocol: 'udp' | 'tcp';
+  }) {
+    const serviceDomain = `_${type}._${protocol}.local`;
+    this.queries.get(serviceDomain)?.cancel();
   }
 }
 

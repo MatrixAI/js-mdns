@@ -2,12 +2,16 @@ import type { CachableResourceRecord, QuestionRecord } from '@/dns';
 import type { MDNSCacheExpiredEvent } from '@/cache/events';
 import { QClass, QType, RClass, RType } from '@/dns';
 import { ResourceRecordCache } from '@/cache';
+import { fc, testProp } from '@fast-check/jest';
+import { resourceRecordArb } from '../dns/utils';
+
+const MAX_RECORDS = 100;
 
 describe(ResourceRecordCache.name, () => {
   let cache: ResourceRecordCache;
 
   beforeEach(async () => {
-    cache = await ResourceRecordCache.createMDNSCache();
+    cache = await ResourceRecordCache.createMDNSCache({ max: MAX_RECORDS });
   });
 
   afterEach(async () => {
@@ -81,6 +85,15 @@ describe(ResourceRecordCache.name, () => {
       unicast: false,
     };
     expect(cache.get(question)).toEqual(records);
+  });
+
+  testProp(
+    'overflow',
+    [fc.array(resourceRecordArb, { minLength: MAX_RECORDS + 1, maxLength: MAX_RECORDS + 1 })],
+    (records) => {
+    cache.set(records as CachableResourceRecord[]);
+    expect(cache.count).toEqual(MAX_RECORDS);
+    expect(cache.get(records[0] as CachableResourceRecord).length).toEqual(0);
   });
 
   test('expiry', async () => {

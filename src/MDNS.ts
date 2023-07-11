@@ -35,6 +35,7 @@ import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import { MDNSCacheExpiredEvent, ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 import { PromiseCancellable } from '@matrixai/async-cancellable';
+import canonicalize from 'canonicalize';
 
 const MDNS_TTL = 255;
 
@@ -345,18 +346,24 @@ class MDNS extends EventTarget {
 
   // Use set of timers instead instead of dangling
   private advertise(packet: Packet, socket?: dgram.Socket) {
-    const advertisement = async () => {
-      try {
-        await this.sendPacket(packet, socket);
-      } catch (err) {
-        if (err.code !== 'ERR_SOCKET_DGRAM_NOT_RUNNING') {
-          // TODO: deal with this
-        }
-      }
-    };
-    advertisement().then(async () => {
-      await new Timer(advertisement, 1000);
+    const advertisementKey = canonicalize(packet.answers) as string;
+
+    const abortController = new AbortController();
+    let timer: Timer | undefined;
+
+    abortController.signal.addEventListener("abort", () => {
+      timer?.cancel()
+      this.advertisements.delete(advertisementKey);
     });
+
+    const promise = new PromiseCancellable<void>(async (resolve, reject) => {
+      await this.sendPacket(packet, socket).catch(reject);
+      timer = new Timer(() => this.sendPacket(packet, socket).catch(reject), 1000);
+      await timer;
+      resolve();
+    }).finally(() => this.advertisements.delete(advertisementKey));
+
+    this.advertisements.set(advertisementKey, promise);
   }
 
   /**
@@ -740,7 +747,6 @@ class MDNS extends EventTarget {
       hosts: [],
       ...serviceOptions,
     };
-
     const serviceDomain = `_${service.type}._${service.protocol}.local` as Hostname;
     const fdqn = `${service.name}.${serviceDomain}` as Hostname;
 
@@ -830,20 +836,29 @@ class MDNS extends EventTarget {
       authorities: [],
     };
 
+
     let timer: Timer | undefined;
-    let delay = minDelay * 1000;
+    let delayMilis = minDelay * 1000;
+    const maxDelayMilis = maxDelay * 1000;
 
     const abortController = new AbortController();
-    abortController.signal.addEventListener('abort', () => timer?.cancel());
+    abortController.signal.addEventListener('abort', () => {
+      timer?.cancel();
+      this.queries.delete(serviceDomain);
+    });
 
-    const send = async () => {
-      await this.sendPacket(queryPacket);
-      delay *= 2;
-      if (delay > maxDelay * 1000) delay = maxDelay * 1000;
-      timer = new Timer(send, delay);
-    };
-
-    const promise = PromiseCancellable.from(send(), abortController);
+    const promise = new PromiseCancellable<void>(async (_resolve, reject) => {
+      await this.sendPacket(queryPacket).catch(reject);
+      const setTimer = () => {
+        timer = new Timer(() => {
+          this.sendPacket(queryPacket).catch(reject);
+          setTimer();
+        }, delayMilis);
+        delayMilis *= 2;
+        if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
+      };
+      setTimer();
+    }, abortController).finally(() => this.queries.delete(serviceDomain));
 
     this.queries.set(serviceDomain, promise);
   }

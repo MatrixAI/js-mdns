@@ -29,24 +29,23 @@ describe('Responder', () => {
       type,
     });
 
-    mdns2
-      .startQuery({
-        type,
-        protocol,
-      });
+    mdns2.startQuery({
+      type,
+      protocol,
+    });
     mdns2.addEventListener('service', (e: MDNSServiceEvent) => {
       mdns2.stopQuery({
         type,
-        protocol
-      })
+        protocol,
+      });
       expect(e.detail.name).toBe(name);
       expect(e.detail.port).toBe(port);
       expect(e.detail.protocol).toBe(protocol);
       expect(e.detail.type).toBe(type);
-      expect(e.detail.hostname).toBe(mdns1Hostname+'.local');
-      // mdns1.stop();
+      expect(e.detail.hostname).toBe(mdns1Hostname + '.local');
+      // Mdns1.stop();
       // mdns2.stop();
     });
-    // await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
+    // Await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
   });
 });

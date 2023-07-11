@@ -13,12 +13,15 @@ import type {
   ResourceRecord,
   StringRecord,
 } from './dns';
+import type { MDNSCacheExpiredEvent } from './cache';
 import * as dgram from 'dgram';
 import { StartStop, ready } from '@matrixai/async-init/dist/StartStop';
 import { Timer } from '@matrixai/timer';
 import Logger from '@matrixai/logger';
 import Table from '@matrixai/table';
 import { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
+import { PromiseCancellable } from '@matrixai/async-cancellable';
+import canonicalize from 'canonicalize';
 import * as utils from './utils';
 import * as errors from './errors';
 import {
@@ -32,10 +35,8 @@ import {
   RType,
 } from './dns';
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
-import { MDNSCacheExpiredEvent, ResourceRecordCache } from './cache';
+import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
-import { PromiseCancellable } from '@matrixai/async-cancellable';
-import canonicalize from 'canonicalize';
 
 const MDNS_TTL = 255;
 
@@ -77,10 +78,7 @@ class MDNS extends EventTarget {
     netmask: string;
   }> = new Table(
     ['networkInterfaceName', 'address', 'family'],
-    [
-      ['networkInterfaceName'],
-      ['address']
-    ],
+    [['networkInterfaceName'], ['address']],
   );
   protected _host: Host;
   protected _port: Port;
@@ -241,7 +239,7 @@ class MDNS extends EventTarget {
           }
           this.socketHostTable.insertRow({
             ...networkAddress,
-            networkInterfaceName
+            networkInterfaceName,
           });
         }
       }
@@ -252,7 +250,7 @@ class MDNS extends EventTarget {
         );
       }
     } else {
-      // this.networkInterfaceTable.insertRow({
+      // This.networkInterfaceTable.insertRow({
       //   address: host_,
       //   udpType: udpType_,
       //   networkInterfaceName: '',
@@ -338,14 +336,22 @@ class MDNS extends EventTarget {
     this._groups = groups;
     this._hostname = hostname as Hostname;
     this.networkRecordCache = await ResourceRecordCache.createMDNSCache();
-    this.networkRecordCache.addEventListener("expired", (event: MDNSCacheExpiredEvent) => this.processExpiredResourceRecords(event.detail));
+    this.networkRecordCache.addEventListener(
+      'expired',
+      (event: MDNSCacheExpiredEvent) =>
+        this.processExpiredResourceRecords(event.detail),
+    );
 
     // We have to figure out 1 socket at a time
     // And we have to decide what we are doing here
   }
 
   // Use set of timers instead instead of dangling
-  private advertise(packet: Packet, advertisementKey: string, socket?: dgram.Socket) {
+  private advertise(
+    packet: Packet,
+    advertisementKey: string,
+    socket?: dgram.Socket,
+  ) {
     const advertisement = this.advertisements.get(advertisementKey);
     if (advertisement != null) {
       advertisement.cancel();
@@ -354,14 +360,17 @@ class MDNS extends EventTarget {
     const abortController = new AbortController();
     let timer: Timer | undefined;
 
-    abortController.signal.addEventListener("abort", () => {
-      timer?.cancel()
-      this.advertisements.delete(advertisementKey)
+    abortController.signal.addEventListener('abort', () => {
+      timer?.cancel();
+      this.advertisements.delete(advertisementKey);
     });
 
     const promise = new PromiseCancellable<void>(async (resolve, reject) => {
       await this.sendPacket(packet, socket).catch(reject);
-      timer = new Timer(() => this.sendPacket(packet, socket).catch(reject), 1000);
+      timer = new Timer(
+        () => this.sendPacket(packet, socket).catch(reject),
+        1000,
+      );
       await timer;
       resolve();
     }).finally(() => this.advertisements.delete(advertisementKey));
@@ -376,7 +385,13 @@ class MDNS extends EventTarget {
     const message = generatePacket(packet);
     let sockets = this.sockets;
     if (socket != null) sockets = [socket];
-    await Promise.all(sockets.map(socket => this.socketMap.get(socket)?.send(message, this._port, this.socketMap.get(socket)?.group)));
+    await Promise.all(
+      sockets.map((socket) =>
+        this.socketMap
+          .get(socket)
+          ?.send(message, this._port, this.socketMap.get(socket)?.group),
+      ),
+    );
   }
 
   private async handleSocketMessage(
@@ -384,36 +399,54 @@ class MDNS extends EventTarget {
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
-
     // We check if the received message is from the same subnet in order to determine if we should respond.
     // TODO: The parsed result can be cached in future.
     try {
-      const addressRowI = this.socketHostTable.whereRows(['address'], [this.socketMap.get(socket)?.host]).at(0);
-      const address = addressRowI ? this.socketHostTable.getRow(addressRowI) : undefined;
+      const addressRowI = this.socketHostTable
+        .whereRows(['address'], [this.socketMap.get(socket)?.host])
+        .at(0);
+      const address = addressRowI
+        ? this.socketHostTable.getRow(addressRowI)
+        : undefined;
       if (address != null) {
         let mask: IPv4Mask | IPv6Mask;
         let localAddress: IPv4 | IPv6;
         let remoteAddress: IPv4 | IPv6;
         let remoteNetworkInterfaceName: string | undefined;
-        if (address.family === "IPv4") {
+        if (address.family === 'IPv4') {
           localAddress = IPv4.fromString(address.address);
           remoteAddress = IPv4.fromString(rinfo.address);
           mask = new IPv4Mask(address.netmask);
-          if ((mask.value & remoteAddress.value) !== (mask.value & localAddress.value)) return;
-        }
-        else {
+          if (
+            (mask.value & remoteAddress.value) !==
+            (mask.value & localAddress.value)
+          ) {
+            return;
+          }
+        } else {
           localAddress = IPv6.fromString(address.address);
-          const [ remoteAddress_, remoteNetworkInterfaceName_ ] = rinfo.address.split('%', 2);
+          const [remoteAddress_, remoteNetworkInterfaceName_] =
+            rinfo.address.split('%', 2);
           remoteAddress = IPv6.fromString(remoteAddress_);
           mask = new IPv6Mask(address.netmask);
-          remoteNetworkInterfaceName  = remoteNetworkInterfaceName_;
+          remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
         }
-        if ((mask.value & remoteAddress.value) !== (mask.value & localAddress.value)) return;
-        else if (remoteNetworkInterfaceName != null && remoteNetworkInterfaceName !== address.networkInterfaceName) return;
+        if (
+          (mask.value & remoteAddress.value) !==
+          (mask.value & localAddress.value)
+        ) {
+          return;
+        } else if (
+          remoteNetworkInterfaceName != null &&
+          remoteNetworkInterfaceName !== address.networkInterfaceName
+        ) {
+          return;
+        }
       }
-    }
-    catch(_err) {
-      this.logger.warn("An error occurred in parsing a socket's subnet, responding anyway.");
+    } catch (_err) {
+      this.logger.warn(
+        "An error occurred in parsing a socket's subnet, responding anyway.",
+      );
     }
 
     let packet: Packet | undefined;
@@ -458,7 +491,8 @@ class MDNS extends EventTarget {
       ips as Host[],
       this._hostname,
     );
-    const hostIncludedResourceRecords = this.localRecordCache.concat(hostResourceRecords);
+    const hostIncludedResourceRecords =
+      this.localRecordCache.concat(hostResourceRecords);
 
     for (const question of packet.questions) {
       const foundRecord = hostIncludedResourceRecords.find(
@@ -554,10 +588,14 @@ class MDNS extends EventTarget {
     socket: dgram.Socket,
   ) {
     // Filter out all records to only contain ones that are cachable (excludes NSEC, etc.)
-    const cachableResourceRecords = resourceRecords.filter(isCachableResourceRecord);
+    const cachableResourceRecords = resourceRecords.filter(
+      isCachableResourceRecord,
+    );
 
     // Records with flush bit set will replace a set of records with 1 singular record
-    const flushedResourceRecords = cachableResourceRecords.filter((record) => record.flush);
+    const flushedResourceRecords = cachableResourceRecords.filter(
+      (record) => record.flush,
+    );
     this.networkRecordCache.delete(flushedResourceRecords);
 
     // Then set the new records. This order is crucial as to make sure that we don't delete any of the records we are newly setting.
@@ -566,14 +604,20 @@ class MDNS extends EventTarget {
     // We parse the resource records to figure out what service fdqns have been dirtied
     const dirtiedServiceFdqns: Hostname[] = [];
     for (const resourceRecord of resourceRecords) {
-      if (resourceRecord.type === RType.SRV || resourceRecord.type === RType.TXT) {
+      if (
+        resourceRecord.type === RType.SRV ||
+        resourceRecord.type === RType.TXT
+      ) {
         dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
       } else if (
         resourceRecord.type === RType.PTR &&
         resourceRecord.name !== '_services._dns-sd._udp.local'
       ) {
         dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
-      } else if (resourceRecord.type === RType.A || resourceRecord.type === RType.AAAA) {
+      } else if (
+        resourceRecord.type === RType.A ||
+        resourceRecord.type === RType.AAAA
+      ) {
         const relatedResourceRecords =
           this.networkRecordCache.getHostnameRelatedResourceRecords(
             resourceRecord.name as Hostname,
@@ -678,18 +722,26 @@ class MDNS extends EventTarget {
   }
 
   // We processed expired records here. Note that this also processes records of TTL 0, as they expire after 1 second as per spec.
-  private async processExpiredResourceRecords(resourceRecord: CachableResourceRecord) {
+  private async processExpiredResourceRecords(
+    resourceRecord: CachableResourceRecord,
+  ) {
     const dirtiedServiceFdqns: Hostname[] = [];
 
     // Processing record to find related fdqns
-    if (resourceRecord.type === RType.SRV || resourceRecord.type === RType.TXT) {
+    if (
+      resourceRecord.type === RType.SRV ||
+      resourceRecord.type === RType.TXT
+    ) {
       dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
     } else if (
       resourceRecord.type === RType.PTR &&
       resourceRecord.name !== '_services._dns-sd._udp.local'
     ) {
       dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
-    } else if (resourceRecord.type === RType.A || resourceRecord.type === RType.AAAA) {
+    } else if (
+      resourceRecord.type === RType.A ||
+      resourceRecord.type === RType.AAAA
+    ) {
       const relatedResourceRecords =
         this.networkRecordCache.getHostnameRelatedResourceRecords(
           resourceRecord.name as Hostname,
@@ -704,9 +756,7 @@ class MDNS extends EventTarget {
     for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
       const foundService = this.networkServices.get(dirtiedServiceFdqn);
       if (foundService == null) continue;
-      this.dispatchEvent(
-        new MDNSServiceRemovedEvent({ detail: foundService }),
-      );
+      this.dispatchEvent(new MDNSServiceRemovedEvent({ detail: foundService }));
       this.networkServices.delete(dirtiedServiceFdqn);
     }
   }
@@ -755,7 +805,8 @@ class MDNS extends EventTarget {
       hosts: [],
       ...serviceOptions,
     };
-    const serviceDomain = `_${service.type}._${service.protocol}.local` as Hostname;
+    const serviceDomain =
+      `_${service.type}._${service.protocol}.local` as Hostname;
     const fdqn = `${service.name}.${serviceDomain}` as Hostname;
 
     this.localServices.set(fdqn, service);
@@ -843,7 +894,6 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-
 
     let timer: Timer | undefined;
     let delayMilis = minDelay * 1000;

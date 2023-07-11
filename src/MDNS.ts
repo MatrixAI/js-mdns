@@ -345,8 +345,11 @@ class MDNS extends EventTarget {
   }
 
   // Use set of timers instead instead of dangling
-  private advertise(packet: Packet, socket?: dgram.Socket) {
-    const advertisementKey = canonicalize(packet.answers) as string;
+  private advertise(packet: Packet, advertisementKey: string, socket?: dgram.Socket) {
+    const advertisement = this.advertisements.get(advertisementKey);
+    if (advertisement != null) {
+      advertisement.cancel();
+    }
 
     const abortController = new AbortController();
     let timer: Timer | undefined;
@@ -764,7 +767,7 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-    this.advertise(advertisePacket);
+    this.advertise(advertisePacket, fdqn);
   }
 
   public unregisterService({
@@ -801,7 +804,7 @@ class MDNS extends EventTarget {
       additionals: [],
       authorities: [],
     };
-    this.advertise(advertisePacket);
+    this.advertise(advertisePacket, fdqn);
   }
 
   // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.

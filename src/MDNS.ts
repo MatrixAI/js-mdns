@@ -408,10 +408,8 @@ class MDNS extends EventTarget {
           mask = new IPv6Mask(address.netmask);
           remoteNetworkInterfaceName  = remoteNetworkInterfaceName_;
         }
-        if ((mask.value & remoteAddress.value) !== (mask.value & localAddress.value)) {
-          if (remoteNetworkInterfaceName == null) return;
-          if (remoteNetworkInterfaceName !== address.networkInterfaceName) return;
-        }
+        if ((mask.value & remoteAddress.value) !== (mask.value & localAddress.value)) return;
+        else if (remoteNetworkInterfaceName != null && remoteNetworkInterfaceName !== address.networkInterfaceName) return;
       }
     }
     catch(_err) {

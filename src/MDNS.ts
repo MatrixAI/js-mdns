@@ -394,17 +394,24 @@ class MDNS extends EventTarget {
         let mask: IPv4Mask | IPv6Mask;
         let localAddress: IPv4 | IPv6;
         let remoteAddress: IPv4 | IPv6;
+        let remoteNetworkInterfaceName: string | undefined;
         if (address.family === "IPv4") {
           localAddress = IPv4.fromString(address.address);
           remoteAddress = IPv4.fromString(rinfo.address);
           mask = new IPv4Mask(address.netmask);
+          if ((mask.value & remoteAddress.value) !== (mask.value & localAddress.value)) return;
         }
         else {
           localAddress = IPv6.fromString(address.address);
-          remoteAddress = IPv6.fromString(rinfo.address.split('%', 2)[0]);
+          const [ remoteAddress_, remoteNetworkInterfaceName_ ] = rinfo.address.split('%', 2);
+          remoteAddress = IPv6.fromString(remoteAddress_);
           mask = new IPv6Mask(address.netmask);
+          remoteNetworkInterfaceName  = remoteNetworkInterfaceName_;
         }
-        if ((mask.getValue() & remoteAddress.getValue()) !== (mask.getValue() & localAddress.getValue())) return;
+        if ((mask.value & remoteAddress.value) !== (mask.value & localAddress.value)) {
+          if (remoteNetworkInterfaceName == null) return;
+          if (remoteNetworkInterfaceName !== address.networkInterfaceName) return;
+        }
       }
     }
     catch(_err) {

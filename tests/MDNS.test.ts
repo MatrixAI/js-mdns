@@ -5,6 +5,10 @@ import MDNS from '@/MDNS';
 import { testUtility } from './utils';
 
 describe('Responder', () => {
+  test('', () => {
+    const mdns = new MDNS();
+
+  });
   test('some arbitrary test', async () => {
     const mdnsPort = 1234 as Port;
 
@@ -29,11 +33,12 @@ describe('Responder', () => {
       type,
     });
 
-    mdns2.startQuery({
-      type,
-      protocol,
-    });
+    // mdns2.startQuery({
+    //   type,
+    //   protocol,
+    // });
     mdns2.addEventListener('service', (e: MDNSServiceEvent) => {
+      console.log(e.detail);
       mdns2.stopQuery({
         type,
         protocol,

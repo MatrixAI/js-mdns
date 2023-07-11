@@ -43,6 +43,11 @@ class ResourceRecordCache extends EventTarget {
     return this._timerDisabled;
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
+  public get count(): number {
+    return this.resourceRecordCache.count;
+  }
+
   public static async createMDNSCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
     timerDisabled = false,

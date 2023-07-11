@@ -353,7 +353,7 @@ class MDNS extends EventTarget {
 
     abortController.signal.addEventListener("abort", () => {
       timer?.cancel()
-      this.advertisements.delete(advertisementKey);
+      this.advertisements.delete(advertisementKey)
     });
 
     const promise = new PromiseCancellable<void>(async (resolve, reject) => {
@@ -848,17 +848,21 @@ class MDNS extends EventTarget {
     });
 
     const promise = new PromiseCancellable<void>(async (_resolve, reject) => {
-      await this.sendPacket(queryPacket).catch(reject);
+      const rejectP = () => {
+        reject();
+        this.queries.delete(serviceDomain);
+      };
+      await this.sendPacket(queryPacket).catch(rejectP);
       const setTimer = () => {
         timer = new Timer(() => {
-          this.sendPacket(queryPacket).catch(reject);
+          this.sendPacket(queryPacket).catch(rejectP);
           setTimer();
         }, delayMilis);
         delayMilis *= 2;
         if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
       };
       setTimer();
-    }, abortController).finally(() => this.queries.delete(serviceDomain));
+    }, abortController);
 
     this.queries.set(serviceDomain, promise);
   }

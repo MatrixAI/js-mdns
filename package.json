@@ -35,7 +35,7 @@
     "@matrixai/contexts": "^1.1.0",
     "@matrixai/errors": "^1.1.7",
     "@matrixai/logger": "^3.1.0",
-    "@matrixai/table": "^1.1.0",
+    "@matrixai/table": "^1.2.0",
     "@matrixai/timer": "^1.1.1",
     "canonicalize": "^2.0.0",
     "ip-num": "^1.5.1"
@@ -44,7 +44,6 @@
     "@fast-check/jest": "^1.6.2",
     "@swc/core": "^1.3.62",
     "@swc/jest": "^0.2.26",
-    "@types/dns-packet": "^5.2.4",
     "@types/jest": "^28.1.3",
     "@types/node": "^18.15.0",
     "@typescript-eslint/eslint-plugin": "^5.45.1",

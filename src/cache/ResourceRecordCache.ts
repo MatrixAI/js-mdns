@@ -31,25 +31,35 @@ class ResourceRecordCache extends EventTarget {
 
   // The max amount of records that can be stored.
   private _max: number;
+  private _timerDisabled: boolean;
 
   @ready(new errors.ErrorCacheDestroyed())
   public get max(): number {
-    return this.max;
+    return this._max;
+  }
+
+  @ready(new errors.ErrorCacheDestroyed())
+  public get timerDisabled(): boolean {
+    return this._timerDisabled;
   }
 
   public static async createMDNSCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
+    timerDisabled = false,
   }: {
     max?: number;
+    timerDisabled?: boolean;
   } = {}) {
     return new this({
       max,
+      timerDisabled
     });
   }
 
-  constructor({ max }) {
+  constructor({ max, timerDisabled }) {
     super();
     this._max = max;
+    this._timerDisabled = timerDisabled;
   }
 
   public async destroy() {
@@ -232,6 +242,8 @@ class ResourceRecordCache extends EventTarget {
 
   @ready(new errors.ErrorCacheDestroyed())
   private resourceRecordCacheTimerReset() {
+    if (this._timerDisabled) return;
+
     this.resourceRecordCacheTimer.cancel();
 
     // Latest expiration is always at the end of the array

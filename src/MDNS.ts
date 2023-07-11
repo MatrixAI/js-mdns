@@ -11,7 +11,6 @@ import type {
   Packet,
   QuestionRecord,
   ResourceRecord,
-  StringRecord,
 } from './dns';
 import type { MDNSCacheExpiredEvent } from './cache';
 import * as dgram from 'dgram';
@@ -21,7 +20,6 @@ import Logger from '@matrixai/logger';
 import Table from '@matrixai/table';
 import { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
 import { PromiseCancellable } from '@matrixai/async-cancellable';
-import canonicalize from 'canonicalize';
 import * as utils from './utils';
 import * as errors from './errors';
 import {
@@ -342,6 +340,27 @@ class MDNS extends EventTarget {
         this.processExpiredResourceRecords(event.detail),
     );
 
+    for (const socket of sockets) {
+      const socketInfo = this.socketMap.get(socket);
+      if (socketInfo == null) continue;
+      const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
+      const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
+      const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname);
+      const advertisePacket: Packet = {
+        id: 0,
+        flags: {
+          opcode: PacketOpCode.QUERY,
+          rcode: RCode.NoError,
+          type: PacketType.RESPONSE,
+        },
+        questions: [],
+        answers: hostResourceRecords,
+        additionals: [],
+        authorities: [],
+      };
+      this.advertise(advertisePacket, socketInfo.host, socket);
+    }
+
     // We have to figure out 1 socket at a time
     // And we have to decide what we are doing here
   }
@@ -465,7 +484,7 @@ class MDNS extends EventTarget {
 
   private async handleSocketMessageQuery(
     packet: Packet,
-    rinfo: dgram.RemoteInfo,
+    _rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
     if (packet.flags.type !== PacketType.QUERY) return;

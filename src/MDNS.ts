@@ -760,35 +760,28 @@ class MDNS extends EventTarget {
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
   public async stop(): Promise<void> {
-    const hostResourceRecords = utils.toHostResourceRecords(
-      [...this.socketHostTable].flatMap((e) => e[1].address),
-      this._hostname,
-      true,
-      0,
-    );
-    const toServiceResourceRecords = utils.toServiceResourceRecords(
-      this.localServices,
-      this._hostname,
-      true,
-      0,
-    );
-    const allFlushedResourceRecords =
-      toServiceResourceRecords.concat(hostResourceRecords);
-    const goodbyePacket: Packet = {
-      id: 0,
-      flags: {
-        opcode: PacketOpCode.QUERY,
-        rcode: RCode.NoError,
-        type: PacketType.RESPONSE,
-      },
-      questions: [],
-      answers: allFlushedResourceRecords,
-      additionals: [],
-      authorities: [],
-    };
-    // TODO: stop the cache
-    // await this.sendPacket(goodbyePacket);
-    // await this.socketClose();
+    // Clear Services and Cache
+    this.localRecordCache.destroy();
+    this.localRecordCacheDirty = true;
+    this.localServices.clear();
+    this.networkRecordCache.destroy();
+    this.networkServices.clear();
+
+    // Cancel Queries and Advertisements
+    for (const query of this.queries.values()) {
+      query.cancel();
+    }
+    for (const advertisement of this.advertisements.values()) {
+      advertisement.cancel();
+    }
+
+    // Close all Sockets
+    for (const socket of this.sockets) {
+      this.socketMap.get(socket)?.close();
+      this.socketMap.delete(socket);
+    }
+    this.socketHostTable.clearTable();
+    this.sockets = [];
   }
 
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.

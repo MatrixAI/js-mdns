@@ -356,14 +356,19 @@ class MDNS extends EventTarget {
     });
 
     const promise = new PromiseCancellable<void>(async (resolve, reject) => {
-      await this.sendPacket(packet, socket).catch(reject);
+      const rejectP = () => {
+        this.advertisements.delete(advertisementKey);
+        reject();
+      }
+      await this.sendPacket(packet, socket).catch(rejectP);
       timer = new Timer(
-        () => this.sendPacket(packet, socket).catch(reject),
+        async () => {
+          await this.sendPacket(packet, socket).catch(rejectP);
+          resolve();
+        },
         1000,
       );
-      await timer;
-      resolve();
-    }).finally(() => this.advertisements.delete(advertisementKey));
+    }, abortController);
 
     this.advertisements.set(advertisementKey, promise);
   }
@@ -893,9 +898,9 @@ class MDNS extends EventTarget {
 
     const promise = new PromiseCancellable<void>(async (_resolve, reject) => {
       const rejectP = () => {
-        reject();
         this.queries.delete(serviceDomain);
-      };
+        reject();
+      }
       await this.sendPacket(queryPacket).catch(rejectP);
       const setTimer = () => {
         timer = new Timer(() => {

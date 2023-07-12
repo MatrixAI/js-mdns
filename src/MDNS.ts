@@ -6,10 +6,11 @@ import type {
   ServiceOptions,
   NetworkInterfaces,
 } from './types';
-import type {
+import {
   CachableResourceRecord,
   Packet,
   QuestionRecord,
+  RClass,
   ResourceRecord,
 } from './dns';
 import type { MDNSCacheExpiredEvent } from './cache';
@@ -51,7 +52,7 @@ class MDNS extends EventTarget {
     | NetworkInterfaces
     | PromiseLike<NetworkInterfaces>;
 
-  protected localRecordCache: Array<ResourceRecord> = [];
+  protected localRecordCache: ResourceRecordCache;
   protected localRecordCacheDirty = true;
   protected localServices: Map<Hostname, Service> = new Map();
 
@@ -333,7 +334,8 @@ class MDNS extends EventTarget {
     this._port = port;
     this._groups = groups;
     this._hostname = hostname as Hostname;
-    this.networkRecordCache = await ResourceRecordCache.createMDNSCache();
+    this.localRecordCache = await ResourceRecordCache.createResourceRecordCache({ timerDisabled: true });
+    this.networkRecordCache = await ResourceRecordCache.createResourceRecordCache();
     this.networkRecordCache.addEventListener(
       'expired',
       (event: MDNSCacheExpiredEvent) =>
@@ -489,7 +491,10 @@ class MDNS extends EventTarget {
   ) {
     if (packet.flags.type !== PacketType.QUERY) return;
     const answerResourceRecords: ResourceRecord[] = [];
-    const additionalResourceRecords: Map<string, ResourceRecord> = new Map();
+    const additionalResourceRecords: ResourceRecord[] = [];
+    const additionalQuestionRecords: QuestionRecord[] = [];
+    const processedRowIs = new Set<number>();
+    let hasHostRecordsBeenProcessed = false;
 
     const networkInterfaceName =
       this.socketMap.get(socket)?.networkInterfaceName;
@@ -500,9 +505,12 @@ class MDNS extends EventTarget {
 
     if (this.localRecordCacheDirty) {
       this.localRecordCacheDirty = false;
-      this.localRecordCache = utils.toServiceResourceRecords(
-        [...this.localServices.values()],
-        this._hostname,
+      this.localRecordCache.clear();
+      this.localRecordCache.set(
+        utils.toServiceResourceRecords(
+          [...this.localServices.values()],
+          this._hostname,
+        ) as CachableResourceRecord[]
       );
     }
 
@@ -510,63 +518,63 @@ class MDNS extends EventTarget {
       ips as Host[],
       this._hostname,
     );
-    const hostIncludedResourceRecords =
-      this.localRecordCache.concat(hostResourceRecords);
 
-    for (const question of packet.questions) {
-      const foundRecord = hostIncludedResourceRecords.find(
-        (record) =>
-          record.name === question.name &&
-          ((record.type as number) === question.type ||
-            question.type === QType.ANY) &&
-          (((record as any).class as number) === question.class ||
-            question.class === QClass.ANY),
-      );
-      if (foundRecord) {
-        answerResourceRecords.push(foundRecord);
+    // Handle host questions first
+    const hostQuestionRecords = packet.questions.filter((question) => question.type === QType.A || question.type === QType.AAAA || question.type === QType.ANY);
+    for (const question of hostQuestionRecords) {
+      const foundHostRecords = hostResourceRecords.filter((record) =>
+        record.name === question.name && (record.type === question.type as number || question.type === QType.ANY)
+      )
+      if (question.type !== QType.ANY) {
+        const additionalHostRecords = hostResourceRecords.filter((record) =>
+          record.name === question.name && (record.type === (question.type === QType.A ? RType.AAAA : RType.A))
+        );
+        additionalResourceRecords.push(...additionalHostRecords);
+      }
+      hasHostRecordsBeenProcessed = true;
+      answerResourceRecords.push(...foundHostRecords);
+    }
 
-        let additionalResourceRecordCache: ResourceRecord[] = [];
-        // RFC 6763 12.1. Additionals in PTR
-        if (question.type === QType.PTR) {
-          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
-            (record) =>
-              (record.type === RType.SRV && record.name === foundRecord.data) ||
-              (record.type === RType.TXT && record.name === foundRecord.data) ||
-              record.type === RType.A ||
-              record.type === RType.AAAA,
-          );
-        }
-        // RFC 6763 12.2. Additionals in SRV
-        else if (question.type === QType.SRV) {
-          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
-            (record) => record.type === RType.A || record.type === RType.AAAA,
-          );
-        }
-        // RFC 6762 6.2. Additionals in A
-        else if (question.type === QType.A) {
-          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
-            (record) => record.type === RType.AAAA,
-          );
-        }
-        // RFC 6762 6.2. Additionals in AAAA
-        else if (question.type === QType.AAAA) {
-          additionalResourceRecordCache = hostIncludedResourceRecords.filter(
-            (record) => record.type === RType.A,
-          );
-        }
-        for (const additionalResourceRecord of additionalResourceRecordCache) {
-          const additionalResourceRecordKey = JSON.stringify([
-            additionalResourceRecord.name,
-            additionalResourceRecord.class,
-            additionalResourceRecord.type,
-          ]);
-          if (!additionalResourceRecords.has(additionalResourceRecordKey)) {
-            additionalResourceRecords.set(
-              additionalResourceRecordKey,
-              additionalResourceRecord,
-            );
+    const answerResourceRecordRowIs = this.localRecordCache.where(packet.questions);
+    for (const answerResourceRecordRowI of answerResourceRecordRowIs) {
+      processedRowIs.add(answerResourceRecordRowI);
+    }
+    answerResourceRecords.push(...this.localRecordCache.get(answerResourceRecordRowIs));
+
+    for (const answerResourceRecord of answerResourceRecords) {
+      // RFC 6763 12.1. Additionals in PTR
+      if (answerResourceRecord.type === RType.PTR) {
+        additionalQuestionRecords.push(
+          {
+            name: answerResourceRecord.data,
+            class: QClass.IN,
+            type: QType.SRV,
+            unicast: false
+          },
+          {
+            name: answerResourceRecord.data,
+            class: QClass.IN,
+            type: QType.TXT,
+            unicast: false
           }
+        );
+        if (!hasHostRecordsBeenProcessed) {
+          hasHostRecordsBeenProcessed = true;
+          additionalResourceRecords.push(...hostResourceRecords);
         }
+      }
+      // RFC 6763 12.2. Additionals in PTR
+      else if (answerResourceRecord.type === RType.SRV && !hasHostRecordsBeenProcessed) {
+        hasHostRecordsBeenProcessed = true;
+        additionalResourceRecords.push(...hostResourceRecords);
+      }
+    }
+
+    const additionalQuestionRecordRowIs = this.localRecordCache.where(additionalQuestionRecords);
+    for (const additionalQuestionRecordRowI of additionalQuestionRecordRowIs) {
+      if (!processedRowIs.has(additionalQuestionRecordRowI)) {
+        processedRowIs.add(additionalQuestionRecordRowI);
+        additionalResourceRecords.push(...this.localRecordCache.get([additionalQuestionRecordRowI]));
       }
     }
 
@@ -581,7 +589,7 @@ class MDNS extends EventTarget {
       },
       questions: [],
       answers: answerResourceRecords,
-      additionals: [...additionalResourceRecords.values()],
+      additionals: additionalResourceRecords,
       authorities: [],
     };
     await this.sendPacket(responsePacket, socket);
@@ -666,7 +674,7 @@ class MDNS extends EventTarget {
         class: QClass.IN,
         unicast: false,
       });
-      let responseRecords = this.networkRecordCache.get([
+      let responseRecords = this.networkRecordCache.whereGet([
         ...remainingQuestions.values(),
       ]);
       for (const responseRecord of responseRecords) {
@@ -698,7 +706,7 @@ class MDNS extends EventTarget {
         class: QClass.IN,
         unicast: false,
       });
-      responseRecords = this.networkRecordCache.get([
+      responseRecords = this.networkRecordCache.whereGet([
         ...remainingQuestions.values(),
       ]);
       for (const responseRecord of responseRecords) {

@@ -11,7 +11,7 @@ describe(ResourceRecordCache.name, () => {
   let cache: ResourceRecordCache;
 
   beforeEach(async () => {
-    cache = await ResourceRecordCache.createMDNSCache({ max: MAX_RECORDS });
+    cache = await ResourceRecordCache.createResourceRecordCache({ max: MAX_RECORDS });
   });
 
   afterEach(async () => {
@@ -30,7 +30,7 @@ describe(ResourceRecordCache.name, () => {
       },
     ];
     cache.set(records);
-    expect(cache.get(records)).toEqual(records);
+    expect(cache.whereGet(records)).toEqual(records);
   });
 
   test('multiple', () => {
@@ -54,7 +54,7 @@ describe(ResourceRecordCache.name, () => {
       },
     ];
     cache.set(records);
-    expect(cache.get(records[0])).toEqual(records);
+    expect(cache.whereGet(records[0])).toEqual(records);
   });
 
   test('any', () => {
@@ -84,7 +84,7 @@ describe(ResourceRecordCache.name, () => {
       type: QType.ANY,
       unicast: false,
     };
-    expect(cache.get(question)).toEqual(records);
+    expect(cache.whereGet(question)).toEqual(records);
   });
 
   testProp(
@@ -93,7 +93,7 @@ describe(ResourceRecordCache.name, () => {
     (records) => {
     cache.set(records as CachableResourceRecord[]);
     expect(cache.count).toEqual(MAX_RECORDS);
-    expect(cache.get(records[0] as CachableResourceRecord).length).toEqual(0);
+    expect(cache.whereGet(records[0] as CachableResourceRecord).length).toEqual(0);
   });
 
   test('expiry', async () => {

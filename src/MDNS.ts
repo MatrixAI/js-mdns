@@ -311,7 +311,7 @@ class MDNS extends EventTarget {
         this.processExpiredResourceRecords(event.detail),
     );
 
-    for (const socket of sockets) {
+    for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
       if (socketInfo == null) continue;
       const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
@@ -762,13 +762,6 @@ class MDNS extends EventTarget {
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
   public async stop(): Promise<void> {
-    // Clear Services and Cache
-    this.localRecordCache.destroy();
-    this.localRecordCacheDirty = true;
-    this.localServices.clear();
-    this.networkRecordCache.destroy();
-    this.networkServices.clear();
-
     // Cancel Queries and Advertisements
     for (const query of this.queries.values()) {
       query.cancel();
@@ -776,6 +769,38 @@ class MDNS extends EventTarget {
     for (const advertisement of this.advertisements.values()) {
       advertisement.cancel();
     }
+
+
+    // Send the goodbye packet
+    const serviceResourceRecords = utils.toServiceResourceRecords([...this.localServices.values()], this._hostname, false, 0);
+    const goodbyePacketPromises = this.sockets.flatMap((socket) => {
+      const socketInfo = this.socketMap.get(socket);
+      if (socketInfo == null) return [];
+      const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
+      const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
+      const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname, true, 0);
+      const advertisePacket: Packet = {
+        id: 0,
+        flags: {
+          opcode: PacketOpCode.QUERY,
+          rcode: RCode.NoError,
+          type: PacketType.RESPONSE,
+        },
+        questions: [],
+        answers: serviceResourceRecords.concat(hostResourceRecords),
+        additionals: [],
+        authorities: [],
+      };
+      return this.sendPacket(advertisePacket, socket);
+    });
+    await Promise.all(goodbyePacketPromises);
+
+    // Clear Services and Cache
+    this.localRecordCache.destroy();
+    this.localRecordCacheDirty = true;
+    this.localServices.clear();
+    this.networkRecordCache.destroy();
+    this.networkServices.clear();
 
     // Close all Sockets
     for (const socket of this.sockets) {

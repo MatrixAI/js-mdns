@@ -609,33 +609,7 @@ class MDNS extends EventTarget {
     this.networkRecordCache.set(cachableResourceRecords);
 
     // We parse the resource records to figure out what service fdqns have been dirtied
-    const dirtiedServiceFdqns: Hostname[] = [];
-    for (const resourceRecord of resourceRecords) {
-      if (
-        resourceRecord.type === RType.SRV ||
-        resourceRecord.type === RType.TXT
-      ) {
-        dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
-      } else if (
-        resourceRecord.type === RType.PTR &&
-        resourceRecord.name !== '_services._dns-sd._udp.local'
-      ) {
-        dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
-      } else if (
-        resourceRecord.type === RType.A ||
-        resourceRecord.type === RType.AAAA
-      ) {
-        const relatedResourceRecords =
-          this.networkRecordCache.getHostnameRelatedResourceRecords(
-            resourceRecord.name as Hostname,
-          );
-        for (const relatedResourceRecord of relatedResourceRecords) {
-          if (relatedResourceRecord.type === RType.SRV) {
-            dirtiedServiceFdqns.push(relatedResourceRecord.name as Hostname);
-          }
-        }
-      }
-    }
+    const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecords);
 
     // Process the dirtied fdqns to figure out what questions still need to be asked.
     const allRemainingQuestions: QuestionRecord[] = [];
@@ -732,33 +706,7 @@ class MDNS extends EventTarget {
   private async processExpiredResourceRecords(
     resourceRecord: CachableResourceRecord,
   ) {
-    const dirtiedServiceFdqns: Hostname[] = [];
-
-    // Processing record to find related fdqns
-    if (
-      resourceRecord.type === RType.SRV ||
-      resourceRecord.type === RType.TXT
-    ) {
-      dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
-    } else if (
-      resourceRecord.type === RType.PTR &&
-      resourceRecord.name !== '_services._dns-sd._udp.local'
-    ) {
-      dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
-    } else if (
-      resourceRecord.type === RType.A ||
-      resourceRecord.type === RType.AAAA
-    ) {
-      const relatedResourceRecords =
-        this.networkRecordCache.getHostnameRelatedResourceRecords(
-          resourceRecord.name as Hostname,
-        );
-      for (const relatedResourceRecord of relatedResourceRecords) {
-        if (relatedResourceRecord.type === RType.SRV) {
-          dirtiedServiceFdqns.push(relatedResourceRecord.name as Hostname);
-        }
-      }
-    }
+    const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecord);
 
     for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
       const foundService = this.networkServices.get(dirtiedServiceFdqn);
@@ -768,10 +716,44 @@ class MDNS extends EventTarget {
     }
   }
 
+  private extractRelatedFdqns(resourceRecords: ResourceRecord | Array<ResourceRecord>): Array<Hostname> {
+    if (!Array.isArray(resourceRecords)) {
+      return this.extractRelatedFdqns([resourceRecords]);
+    }
+    const relatedFdqns: Array<Hostname> = [];
+    for (const resourceRecord of resourceRecords) {
+      if (
+        resourceRecord.type === RType.SRV ||
+        resourceRecord.type === RType.TXT
+      ) {
+        relatedFdqns.push(resourceRecord.name as Hostname);
+      } else if (
+        resourceRecord.type === RType.PTR &&
+        resourceRecord.name !== '_services._dns-sd._udp.local'
+      ) {
+        relatedFdqns.push(resourceRecord.data as Hostname);
+      } else if (
+        resourceRecord.type === RType.A ||
+        resourceRecord.type === RType.AAAA
+      ) {
+        const relatedResourceRecords =
+          this.networkRecordCache.getHostnameRelatedResourceRecords(
+            resourceRecord.name as Hostname,
+          );
+        for (const relatedResourceRecord of relatedResourceRecords) {
+          if (relatedResourceRecord.type === RType.SRV) {
+            relatedFdqns.push(relatedResourceRecord.name as Hostname);
+          }
+        }
+      }
+    }
+    return relatedFdqns;
+  }
+
   private async handleSocketError(e: any) {
     // TODO: Dealing with socket errors, look at QUIC for inspiration
     throw new errors.ErrorMDNSSocket(
-      'An error occured on a socket that MDNS has bound to',
+      'An error occured on a socket that MDNS has bound to...',
       {
         cause: e
       }

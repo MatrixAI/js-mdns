@@ -39,17 +39,13 @@ describe('Responder', () => {
     });
     mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
       console.log(e.detail);
-      mdns2.stopQuery({
-        type,
-        protocol,
-      });
       expect(e.detail.name).toBe(name);
       expect(e.detail.port).toBe(port);
       expect(e.detail.protocol).toBe(protocol);
       expect(e.detail.type).toBe(type);
       expect(e.detail.hostname).toBe(mdns1Hostname + '.local');
-      // Mdns1.stop();
-      // mdns2.stop();
+      mdns1.stop();
+      mdns2.stop();
     });
     // Await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
   });

@@ -27,7 +27,7 @@ class ResourceRecordCache extends EventTarget {
 
   // This is sorted by timestamp + ttl in milliseconds in descending order. This is only sorted when the timer is reset!
   private resourceRecordCacheIndexesByExpiration: Array<number> = [];
-  private resourceRecordCacheTimer: Timer = new Timer();
+  private resourceRecordCacheTimer: Timer | undefined;
 
   // The max amount of records that can be stored.
   private _max: number;
@@ -68,7 +68,8 @@ class ResourceRecordCache extends EventTarget {
   }
 
   public async destroy() {
-    this.resourceRecordCacheTimer.cancel();
+    this.resourceRecordCacheTimer?.cancel();
+    this.resourceRecordCache.clearTable();
   }
 
   @ready(new errors.ErrorCacheDestroyed())
@@ -275,7 +276,7 @@ class ResourceRecordCache extends EventTarget {
   private resourceRecordCacheTimerReset() {
     if (this._timerDisabled) return;
 
-    this.resourceRecordCacheTimer.cancel();
+    this.resourceRecordCacheTimer?.cancel();
 
     // Latest expiration is always at the end of the array
     utils.insertionSort(this.resourceRecordCacheIndexesByExpiration, (a, b) => {

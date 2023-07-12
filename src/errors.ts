@@ -16,11 +16,15 @@ class ErrorMDNSDestroyed<T> extends ErrorMDNS<T> {
   static description = 'MDNS is destroyed';
 }
 
-class ErrorMDNSInvalidBindAddress<T> extends ErrorMDNS<T> {
+class ErrorMDNSSocket<T> extends ErrorMDNS<T> {
+  static description = 'MDNS socket error';
+}
+
+class ErrorMDNSInvalidBindAddress<T> extends ErrorMDNSSocket<T> {
   static description = 'MDNS cannot bind to the specified address';
 }
 
-class ErrorMDNSInvalidSendAddress<T> extends ErrorMDNS<T> {
+class ErrorMDNSInvalidSendAddress<T> extends ErrorMDNSSocket<T> {
   static description = 'MDNS cannot send to the specified address';
 }
 
@@ -29,6 +33,7 @@ export {
   ErrorMDNSRunning,
   ErrorMDNSNotRunning,
   ErrorMDNSDestroyed,
+  ErrorMDNSSocket,
   ErrorMDNSInvalidBindAddress,
   ErrorMDNSInvalidSendAddress,
 };

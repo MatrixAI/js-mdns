@@ -72,9 +72,16 @@ class MDNS extends EventTarget {
   protected socketHostTable: Table<{
     networkInterfaceName: string;
     address: string;
-    family: 'IPv4' | 'IPv6';
     netmask: string;
-  }> = new Table(
+  } & ({
+    parsedAddress: IPv4;
+    parsedMask: IPv4Mask;
+    family: 'IPv4';
+  } | {
+    parsedAddress: IPv6;
+    parsedMask: IPv6Mask;
+    family: 'IPv6';
+  })> = new Table(
     ['networkInterfaceName', 'address', 'family'],
     [['networkInterfaceName'], ['address']],
   );
@@ -180,7 +187,7 @@ class MDNS extends EventTarget {
       const networkAddresses = networkInterfaces[networkInterfaceName];
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
-        const { address, family } = networkAddress;
+        const { address, family, netmask } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
           socketHosts.push([address as Host, 'udp6', networkInterfaceName]);
@@ -188,10 +195,29 @@ class MDNS extends EventTarget {
         else {
           socketHosts.push([address as Host, family === 'IPv4' ? 'udp4' : 'udp6', networkInterfaceName])
         }
-        this.socketHostTable.insertRow({
-          ...networkAddress,
-          networkInterfaceName,
-        });
+        try {
+          if (family === 'IPv4') {
+            this.socketHostTable.insertRow({
+              ...networkAddress,
+              family: 'IPv4',
+              networkInterfaceName,
+              parsedAddress: IPv4.fromString(address),
+              parsedMask: new IPv4Mask(netmask),
+            });
+          }
+          else {
+            this.socketHostTable.insertRow({
+              ...networkAddress,
+              family: 'IPv6',
+              networkInterfaceName,
+              parsedAddress: IPv6.fromString(address),
+              parsedMask: new IPv6Mask(netmask),
+            });
+          }
+        }
+        catch (err) {
+          this.logger.warn(`Parsing network interface address failed: ${address}`)
+        }
       }
     }
     if (socketHosts.length < 1) {
@@ -242,6 +268,7 @@ class MDNS extends EventTarget {
           for (const socket of sockets.reverse()) {
             await socket.close();
           }
+          // TODO: edit comment
           // Possible binding failure due to EINVAL or ENOTFOUND.
           // EINVAL due to using IPv4 address where udp6 is specified.
           // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
@@ -284,7 +311,7 @@ class MDNS extends EventTarget {
         this.processExpiredResourceRecords(event.detail),
     );
 
-    for (const socket of sockets) {
+    for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
       if (socketInfo == null) continue;
       const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
@@ -329,14 +356,19 @@ class MDNS extends EventTarget {
     });
 
     const promise = new PromiseCancellable<void>(async (resolve, reject) => {
-      await this.sendPacket(packet, socket).catch(reject);
+      const rejectP = () => {
+        this.advertisements.delete(advertisementKey);
+        reject();
+      }
+      await this.sendPacket(packet, socket).catch(rejectP);
       timer = new Timer(
-        () => this.sendPacket(packet, socket).catch(reject),
+        async () => {
+          await this.sendPacket(packet, socket).catch(rejectP);
+          resolve();
+        },
         1000,
       );
-      await timer;
-      resolve();
-    }).finally(() => this.advertisements.delete(advertisementKey));
+    }, abortController);
 
     this.advertisements.set(advertisementKey, promise);
   }
@@ -348,13 +380,24 @@ class MDNS extends EventTarget {
     const message = generatePacket(packet);
     let sockets = this.sockets;
     if (socket != null) sockets = [socket];
-    await Promise.all(
-      sockets.map((socket) =>
-        this.socketMap
-          .get(socket)
-          ?.send(message, this._port, this.socketMap.get(socket)?.group),
-      ),
-    );
+    try {
+      await Promise.all(
+        sockets.map((socket) =>
+          this.socketMap
+            .get(socket)
+            ?.send(message, this._port, this.socketMap.get(socket)?.group),
+        ),
+      );
+    }
+    catch (e) {
+      // TODO: error handling
+      throw new errors.ErrorMDNSInvalidSendAddress(
+        `Could not send packet to ...`,
+        {
+          cause: e
+        }
+      );
+    }
   }
 
   private async handleSocketMessage(
@@ -363,7 +406,6 @@ class MDNS extends EventTarget {
     socket: dgram.Socket,
   ) {
     // We check if the received message is from the same subnet in order to determine if we should respond.
-    // TODO: The parsed result can be cached in future.
     try {
       const addressRowI = this.socketHostTable
         .whereRows(['address'], [this.socketMap.get(socket)?.host])
@@ -372,14 +414,12 @@ class MDNS extends EventTarget {
         ? this.socketHostTable.getRow(addressRowI)
         : undefined;
       if (address != null) {
-        let mask: IPv4Mask | IPv6Mask;
-        let localAddress: IPv4 | IPv6;
+        const mask = address.parsedMask;
+        const localAddress = address.parsedAddress;
         let remoteAddress: IPv4 | IPv6;
         let remoteNetworkInterfaceName: string | undefined;
         if (address.family === 'IPv4') {
-          localAddress = IPv4.fromString(address.address);
           remoteAddress = IPv4.fromString(rinfo.address);
-          mask = new IPv4Mask(address.netmask);
           if (
             (mask.value & remoteAddress.value) !==
             (mask.value & localAddress.value)
@@ -387,11 +427,9 @@ class MDNS extends EventTarget {
             return;
           }
         } else {
-          localAddress = IPv6.fromString(address.address);
           const [remoteAddress_, remoteNetworkInterfaceName_] =
             rinfo.address.split('%', 2);
           remoteAddress = IPv6.fromString(remoteAddress_);
-          mask = new IPv6Mask(address.netmask);
           remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
         }
         if (
@@ -408,7 +446,7 @@ class MDNS extends EventTarget {
       }
     } catch (_err) {
       this.logger.warn(
-        "An error occurred in parsing a socket's subnet, responding anyway.",
+        `Parsing remote address failed: ${rinfo.address}`,
       );
     }
 
@@ -571,33 +609,7 @@ class MDNS extends EventTarget {
     this.networkRecordCache.set(cachableResourceRecords);
 
     // We parse the resource records to figure out what service fdqns have been dirtied
-    const dirtiedServiceFdqns: Hostname[] = [];
-    for (const resourceRecord of resourceRecords) {
-      if (
-        resourceRecord.type === RType.SRV ||
-        resourceRecord.type === RType.TXT
-      ) {
-        dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
-      } else if (
-        resourceRecord.type === RType.PTR &&
-        resourceRecord.name !== '_services._dns-sd._udp.local'
-      ) {
-        dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
-      } else if (
-        resourceRecord.type === RType.A ||
-        resourceRecord.type === RType.AAAA
-      ) {
-        const relatedResourceRecords =
-          this.networkRecordCache.getHostnameRelatedResourceRecords(
-            resourceRecord.name as Hostname,
-          );
-        for (const relatedResourceRecord of relatedResourceRecords) {
-          if (relatedResourceRecord.type === RType.SRV) {
-            dirtiedServiceFdqns.push(relatedResourceRecord.name as Hostname);
-          }
-        }
-      }
-    }
+    const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecords);
 
     // Process the dirtied fdqns to figure out what questions still need to be asked.
     const allRemainingQuestions: QuestionRecord[] = [];
@@ -694,33 +706,7 @@ class MDNS extends EventTarget {
   private async processExpiredResourceRecords(
     resourceRecord: CachableResourceRecord,
   ) {
-    const dirtiedServiceFdqns: Hostname[] = [];
-
-    // Processing record to find related fdqns
-    if (
-      resourceRecord.type === RType.SRV ||
-      resourceRecord.type === RType.TXT
-    ) {
-      dirtiedServiceFdqns.push(resourceRecord.name as Hostname);
-    } else if (
-      resourceRecord.type === RType.PTR &&
-      resourceRecord.name !== '_services._dns-sd._udp.local'
-    ) {
-      dirtiedServiceFdqns.push(resourceRecord.data as Hostname);
-    } else if (
-      resourceRecord.type === RType.A ||
-      resourceRecord.type === RType.AAAA
-    ) {
-      const relatedResourceRecords =
-        this.networkRecordCache.getHostnameRelatedResourceRecords(
-          resourceRecord.name as Hostname,
-        );
-      for (const relatedResourceRecord of relatedResourceRecords) {
-        if (relatedResourceRecord.type === RType.SRV) {
-          dirtiedServiceFdqns.push(relatedResourceRecord.name as Hostname);
-        }
-      }
-    }
+    const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecord);
 
     for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
       const foundService = this.networkServices.get(dirtiedServiceFdqn);
@@ -730,42 +716,99 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async handleSocketError(err: any) {
+  private extractRelatedFdqns(resourceRecords: ResourceRecord | Array<ResourceRecord>): Array<Hostname> {
+    if (!Array.isArray(resourceRecords)) {
+      return this.extractRelatedFdqns([resourceRecords]);
+    }
+    const relatedFdqns: Array<Hostname> = [];
+    for (const resourceRecord of resourceRecords) {
+      if (
+        resourceRecord.type === RType.SRV ||
+        resourceRecord.type === RType.TXT
+      ) {
+        relatedFdqns.push(resourceRecord.name as Hostname);
+      } else if (
+        resourceRecord.type === RType.PTR &&
+        resourceRecord.name !== '_services._dns-sd._udp.local'
+      ) {
+        relatedFdqns.push(resourceRecord.data as Hostname);
+      } else if (
+        resourceRecord.type === RType.A ||
+        resourceRecord.type === RType.AAAA
+      ) {
+        const relatedResourceRecords =
+          this.networkRecordCache.getHostnameRelatedResourceRecords(
+            resourceRecord.name as Hostname,
+          );
+        for (const relatedResourceRecord of relatedResourceRecords) {
+          if (relatedResourceRecord.type === RType.SRV) {
+            relatedFdqns.push(relatedResourceRecord.name as Hostname);
+          }
+        }
+      }
+    }
+    return relatedFdqns;
+  }
+
+  private async handleSocketError(e: any) {
     // TODO: Dealing with socket errors, look at QUIC for inspiration
-    this.logger.warn(err);
+    throw new errors.ErrorMDNSSocket(
+      'An error occured on a socket that MDNS has bound to...',
+      {
+        cause: e
+      }
+    )
   }
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
   public async stop(): Promise<void> {
-    const hostResourceRecords = utils.toHostResourceRecords(
-      [...this.socketHostTable].flatMap((e) => e[1].address),
-      this._hostname,
-      true,
-      0,
-    );
-    const toServiceResourceRecords = utils.toServiceResourceRecords(
-      this.localServices,
-      this._hostname,
-      true,
-      0,
-    );
-    const allFlushedResourceRecords =
-      toServiceResourceRecords.concat(hostResourceRecords);
-    const goodbyePacket: Packet = {
-      id: 0,
-      flags: {
-        opcode: PacketOpCode.QUERY,
-        rcode: RCode.NoError,
-        type: PacketType.RESPONSE,
-      },
-      questions: [],
-      answers: allFlushedResourceRecords,
-      additionals: [],
-      authorities: [],
-    };
-    // TODO: stop the cache
-    // await this.sendPacket(goodbyePacket);
-    // await this.socketClose();
+    // Cancel Queries and Advertisements
+    for (const query of this.queries.values()) {
+      query.cancel();
+    }
+    for (const advertisement of this.advertisements.values()) {
+      advertisement.cancel();
+    }
+
+
+    // Send the goodbye packet
+    const serviceResourceRecords = utils.toServiceResourceRecords([...this.localServices.values()], this._hostname, false, 0);
+    const goodbyePacketPromises = this.sockets.flatMap((socket) => {
+      const socketInfo = this.socketMap.get(socket);
+      if (socketInfo == null) return [];
+      const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
+      const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
+      const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname, true, 0);
+      const advertisePacket: Packet = {
+        id: 0,
+        flags: {
+          opcode: PacketOpCode.QUERY,
+          rcode: RCode.NoError,
+          type: PacketType.RESPONSE,
+        },
+        questions: [],
+        answers: serviceResourceRecords.concat(hostResourceRecords),
+        additionals: [],
+        authorities: [],
+      };
+      return this.sendPacket(advertisePacket, socket);
+    });
+    await Promise.all(goodbyePacketPromises);
+
+    // Clear Services and Cache
+    this.localRecordCache.destroy();
+    this.localRecordCacheDirty = true;
+    this.localServices.clear();
+    this.networkRecordCache.destroy();
+    this.networkServices.clear();
+
+    // Close all Sockets
+    for (const socket of this.sockets) {
+      this.socketMap.get(socket)?.close();
+      this.socketMap.delete(socket);
+    }
+    this.socketHostTable.clearTable();
+    this.sockets = [];
   }
 
   // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
@@ -877,9 +920,9 @@ class MDNS extends EventTarget {
 
     const promise = new PromiseCancellable<void>(async (_resolve, reject) => {
       const rejectP = () => {
-        reject();
         this.queries.delete(serviceDomain);
-      };
+        reject();
+      }
       await this.sendPacket(queryPacket).catch(rejectP);
       const setTimer = () => {
         timer = new Timer(() => {

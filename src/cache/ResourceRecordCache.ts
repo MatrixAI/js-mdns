@@ -231,6 +231,7 @@ class ResourceRecordCache extends EventTarget {
     return foundResourceRecords;
   }
 
+  @ready(new errors.ErrorCacheDestroyed())
   public has(record: QuestionRecord | CachableResourceRecord): boolean {
     const indexes = ['name'];
     const keys: Array<any> = [record.name];
@@ -246,6 +247,13 @@ class ResourceRecordCache extends EventTarget {
   }
 
   @ready(new errors.ErrorCacheDestroyed())
+  public clear() {
+    this.resourceRecordCache.clearTable();
+    if (this._timerDisabled) return;
+    this.resourceRecordCacheIndexesByExpiration = [];
+    this.resourceRecordCacheTimerReset();
+  }
+
   private resourceRecordCacheTimerReset() {
     if (this._timerDisabled) return;
 

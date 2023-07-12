@@ -380,13 +380,24 @@ class MDNS extends EventTarget {
     const message = generatePacket(packet);
     let sockets = this.sockets;
     if (socket != null) sockets = [socket];
-    await Promise.all(
-      sockets.map((socket) =>
-        this.socketMap
-          .get(socket)
-          ?.send(message, this._port, this.socketMap.get(socket)?.group),
-      ),
-    );
+    try {
+      await Promise.all(
+        sockets.map((socket) =>
+          this.socketMap
+            .get(socket)
+            ?.send(message, this._port, this.socketMap.get(socket)?.group),
+        ),
+      );
+    }
+    catch (e) {
+      // TODO: error handling
+      throw new errors.ErrorMDNSInvalidSendAddress(
+        `Could not send packet to ...`,
+        {
+          cause: e
+        }
+      );
+    }
   }
 
   private async handleSocketMessage(
@@ -395,7 +406,6 @@ class MDNS extends EventTarget {
     socket: dgram.Socket,
   ) {
     // We check if the received message is from the same subnet in order to determine if we should respond.
-    // TODO: The parsed result can be cached in future.
     try {
       const addressRowI = this.socketHostTable
         .whereRows(['address'], [this.socketMap.get(socket)?.host])
@@ -758,9 +768,14 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async handleSocketError(err: any) {
+  private async handleSocketError(e: any) {
     // TODO: Dealing with socket errors, look at QUIC for inspiration
-    this.logger.warn(err);
+    throw new errors.ErrorMDNSSocket(
+      'An error occured on a socket that MDNS has bound to',
+      {
+        cause: e
+      }
+    )
   }
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.

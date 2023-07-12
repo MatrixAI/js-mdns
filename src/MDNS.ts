@@ -72,9 +72,16 @@ class MDNS extends EventTarget {
   protected socketHostTable: Table<{
     networkInterfaceName: string;
     address: string;
-    family: 'IPv4' | 'IPv6';
     netmask: string;
-  }> = new Table(
+  } & ({
+    parsedAddress: IPv4;
+    parsedMask: IPv4Mask;
+    family: 'IPv4';
+  } | {
+    parsedAddress: IPv6;
+    parsedMask: IPv6Mask;
+    family: 'IPv6';
+  })> = new Table(
     ['networkInterfaceName', 'address', 'family'],
     [['networkInterfaceName'], ['address']],
   );
@@ -180,7 +187,7 @@ class MDNS extends EventTarget {
       const networkAddresses = networkInterfaces[networkInterfaceName];
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
-        const { address, family } = networkAddress;
+        const { address, family, netmask } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
           socketHosts.push([address as Host, 'udp6', networkInterfaceName]);
@@ -188,10 +195,29 @@ class MDNS extends EventTarget {
         else {
           socketHosts.push([address as Host, family === 'IPv4' ? 'udp4' : 'udp6', networkInterfaceName])
         }
-        this.socketHostTable.insertRow({
-          ...networkAddress,
-          networkInterfaceName,
-        });
+        try {
+          if (family === 'IPv4') {
+            this.socketHostTable.insertRow({
+              ...networkAddress,
+              family: 'IPv4',
+              networkInterfaceName,
+              parsedAddress: IPv4.fromString(address),
+              parsedMask: new IPv4Mask(netmask),
+            });
+          }
+          else {
+            this.socketHostTable.insertRow({
+              ...networkAddress,
+              family: 'IPv6',
+              networkInterfaceName,
+              parsedAddress: IPv6.fromString(address),
+              parsedMask: new IPv6Mask(netmask),
+            });
+          }
+        }
+        catch (err) {
+          this.logger.warn(`Parsing network interface address failed: ${address}`)
+        }
       }
     }
     if (socketHosts.length < 1) {
@@ -242,6 +268,7 @@ class MDNS extends EventTarget {
           for (const socket of sockets.reverse()) {
             await socket.close();
           }
+          // TODO: edit comment
           // Possible binding failure due to EINVAL or ENOTFOUND.
           // EINVAL due to using IPv4 address where udp6 is specified.
           // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
@@ -372,14 +399,12 @@ class MDNS extends EventTarget {
         ? this.socketHostTable.getRow(addressRowI)
         : undefined;
       if (address != null) {
-        let mask: IPv4Mask | IPv6Mask;
-        let localAddress: IPv4 | IPv6;
+        const mask = address.parsedMask;
+        const localAddress = address.parsedAddress;
         let remoteAddress: IPv4 | IPv6;
         let remoteNetworkInterfaceName: string | undefined;
         if (address.family === 'IPv4') {
-          localAddress = IPv4.fromString(address.address);
           remoteAddress = IPv4.fromString(rinfo.address);
-          mask = new IPv4Mask(address.netmask);
           if (
             (mask.value & remoteAddress.value) !==
             (mask.value & localAddress.value)
@@ -387,11 +412,9 @@ class MDNS extends EventTarget {
             return;
           }
         } else {
-          localAddress = IPv6.fromString(address.address);
           const [remoteAddress_, remoteNetworkInterfaceName_] =
             rinfo.address.split('%', 2);
           remoteAddress = IPv6.fromString(remoteAddress_);
-          mask = new IPv6Mask(address.netmask);
           remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
         }
         if (
@@ -408,7 +431,7 @@ class MDNS extends EventTarget {
       }
     } catch (_err) {
       this.logger.warn(
-        "An error occurred in parsing a socket's subnet, responding anyway.",
+        `Parsing remote address failed: ${rinfo.address}`,
       );
     }
 

@@ -48,7 +48,7 @@ class ResourceRecordCache extends EventTarget {
     return this.resourceRecordCache.count;
   }
 
-  public static async createMDNSCache({
+  public static async createResourceRecordCache({
     max = 5000, // Each service is about 5 records, so this is about 1000 services
     timerDisabled = false,
   }: {
@@ -181,16 +181,17 @@ class ResourceRecordCache extends EventTarget {
   }
 
   @ready(new errors.ErrorCacheDestroyed())
-  public get(
+  public where(
     records:
       | (QuestionRecord | CachableResourceRecord)
       | (QuestionRecord | CachableResourceRecord)[],
-  ): CachableResourceRecord[] {
+  ): number[] {
     if (!Array.isArray(records)) {
-      return this.get([records]);
+      return this.where([records]);
     }
 
-    const resourceRecords: CachableResourceRecord[] = [];
+    const allFoundRowIs: Set<number> = new Set();
+
     for (const record of records) {
       const indexes = ['name'];
       const keys: Array<any> = [record.name];
@@ -204,16 +205,33 @@ class ResourceRecordCache extends EventTarget {
       }
       const foundRowIs = this.resourceRecordCache.whereRows(indexes, keys);
       for (const foundRowI of foundRowIs) {
-        const foundResourceRecordRows =
-          this.resourceRecordCache.getRow(foundRowI);
-        if (foundResourceRecordRows) {
-          resourceRecords.push(
-            utils.fromCachableResourceRecordRow(foundResourceRecordRows),
-          );
-        }
+        allFoundRowIs.add(foundRowI);
       }
     }
+    return [...allFoundRowIs];
+  }
+
+  @ready(new errors.ErrorCacheDestroyed())
+  public get(
+    rowIs: number[]
+  ): CachableResourceRecord[] {
+    const resourceRecords: CachableResourceRecord[] = [];
+    for (const rowI of rowIs) {
+      const row = this.resourceRecordCache.getRow(rowI);
+      if (row == null) continue;
+      resourceRecords.push(utils.fromCachableResourceRecordRow(row));
+    }
     return resourceRecords;
+  }
+
+  @ready(new errors.ErrorCacheDestroyed())
+  public whereGet(
+    records:
+      | (QuestionRecord | CachableResourceRecord)
+      | (QuestionRecord | CachableResourceRecord)[],
+  ): CachableResourceRecord[] {
+    const allFoundRowIs = this.where(records);
+    return this.get(allFoundRowIs);
   }
 
   @ready(new errors.ErrorCacheDestroyed())

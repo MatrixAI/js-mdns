@@ -33,11 +33,11 @@ describe('Responder', () => {
       type,
     });
 
-    // mdns2.startQuery({
-    //   type,
-    //   protocol,
-    // });
-    mdns2.addEventListener('service', (e: MDNSServiceEvent) => {
+    mdns2.startQuery({
+      type,
+      protocol,
+    });
+    mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
       console.log(e.detail);
       mdns2.stopQuery({
         type,

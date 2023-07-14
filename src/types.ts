@@ -44,18 +44,15 @@ type Port = Opaque<'Port', number>;
  */
 type Address = Opaque<'Address', string>;
 
-type ServiceOptions = {
+type Service = {
   name: string;
   type: string;
   protocol: 'udp' | 'tcp';
-  port: number;
+  port: Port;
   txt?: Record<string, string>;
-};
-
-type Service = {
   hostname: Hostname;
   hosts: Host[];
-} & ServiceOptions;
+};
 
 type NetworkAddress = {
   address: string;
@@ -74,7 +71,6 @@ export type {
   Hostname,
   Port,
   Address,
-  ServiceOptions,
   Service,
   NetworkAddress,
   NetworkInterfaces,

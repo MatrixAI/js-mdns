@@ -3,6 +3,8 @@ import type { Host, Hostname, Port } from '@/types';
 import { Timer } from '@matrixai/timer';
 import MDNS from '@/MDNS';
 import { testUtility } from './utils';
+import dgram from 'dgram';
+import { EventEmitter } from 'stream';
 
 describe('Responder', () => {
   test('', () => {
@@ -37,15 +39,22 @@ describe('Responder', () => {
       type,
       protocol,
     });
-    mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
-      console.log(e.detail);
-      expect(e.detail.name).toBe(name);
-      expect(e.detail.port).toBe(port);
-      expect(e.detail.protocol).toBe(protocol);
-      expect(e.detail.type).toBe(type);
-      expect(e.detail.hostname).toBe(mdns1Hostname + '.local');
-      mdns1.stop();
-      mdns2.stop();
+    await new Promise((resolve, reject) => {
+      mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
+        try {
+          expect(e.detail.name).toBe(name);
+          expect(e.detail.port).toBe(port);
+          expect(e.detail.protocol).toBe(protocol);
+          expect(e.detail.type).toBe(type);
+          expect(e.detail.hostname).toBe(mdns1Hostname + '.local');
+          mdns1.stop();
+          mdns2.stop();
+          resolve(null);
+        }
+        catch (e) {
+          reject();
+        }
+      });
     });
     // Await new Timer(() => mdns?.unregisterService(name, type, protocol), 1000)
   });

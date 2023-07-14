@@ -18,8 +18,11 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "gypfile": true,
   "scripts": {
     "prepare": "tsc -p ./tsconfig.build.json",
+    "install": "node-gyp-build",
+    "prebuild": "node ./scripts/prebuild.js",
     "build": "shx rm -rf ./dist && tsc -p ./tsconfig.build.json",
     "postversion": "npm install --package-lock-only --ignore-scripts --silent",
     "ts-node": "ts-node",
@@ -38,7 +41,8 @@
     "@matrixai/table": "^1.2.0",
     "@matrixai/timer": "^1.1.1",
     "canonicalize": "^2.0.0",
-    "ip-num": "^1.5.1"
+    "ip-num": "^1.5.1",
+    "node-gyp-build": "^4.6.0"
   },
   "devDependencies": {
     "@fast-check/jest": "^1.6.2",
@@ -55,12 +59,19 @@
     "jest": "^28.1.1",
     "jest-extended": "^3.0.1",
     "jest-junit": "^14.0.0",
+    "napi-macros": "^2.2.2",
+    "node-gyp": "^9.0.0",
     "prettier": "^2.6.2",
+    "semver": "^7.5.4",
     "shx": "^0.3.4",
     "ts-jest": "^28.0.5",
     "ts-node": "^10.9.1",
     "tsconfig-paths": "^3.9.0",
     "typedoc": "^0.23.21",
     "typescript": "^4.9.3"
+  },
+  "engines": {
+    "node": "^18.15.0",
+    "msvs": "2019"
   }
 }

@@ -89,6 +89,7 @@ class MDNS extends EventTarget {
   protected _type: 'ipv4' | 'ipv6' | 'ipv4&ipv6';
   protected _groups: Array<Host>;
   protected _hostname: Hostname;
+  protected _unicast: boolean = false;
 
   protected queries: Map<string, PromiseCancellable<void>> = new Map();
   protected advertisements: Map<string, PromiseCancellable<void>> = new Map();
@@ -140,13 +141,12 @@ class MDNS extends EventTarget {
 
   /**
    * Starts MDNS
-
    * @param opts
    * @param opts.host - The host to bind to. Defaults to `::` for dual stack.
    * @param opts.port - The port to bind to. Defaults to 5353 the default MDNS port.
    * @param opts.group - The multicast group IP addresses to multi-cast on. This can have both IPv4 and IPv6.
    * @param opts.hostname - The hostname to use for the MDNS stack. Defaults to the OS hostname.
-   * @param opts.reuseAddr - Allows MDNs to bind on the same port that an existing MDNS stack is already bound on. Defaults to true.
+   * @param opts.reuseAddr - Allows MDNS to bind on the same port that an existing MDNS stack is already bound on. Defaults to true.
    */
   public async start({
     port = 5353 as Port,
@@ -165,6 +165,27 @@ class MDNS extends EventTarget {
   }): Promise<void> {
     if (groups.length < 1) {
       throw new RangeError('Must have at least 1 multicast group');
+    }
+
+    const unicastSocket = dgram.createSocket({
+      type: 'udp6',
+      reuseAddr: false,
+      ipv6Only
+    });
+    const unicastSocketBind = utils.promisify(unicastSocket.bind).bind(unicastSocket);
+    const unicastSocketClose = utils.promisify(unicastSocket.close).bind(unicastSocket);
+    const { p: errorP, rejectP: rejectErrorP } = utils.promise();
+    unicastSocket.once('error', rejectErrorP);
+    const unicastSocketBindP = unicastSocketBind(port, '::');
+    try {
+      await Promise.race([unicastSocketBindP, errorP]);
+      this._unicast = true;
+    }
+    catch (err) {
+      this._unicast = false;
+    }
+    finally {
+      await unicastSocketClose();
     }
 
     // TODO: move this to where it is exactly needed so `hostname` should be the same property
@@ -376,7 +397,7 @@ class MDNS extends EventTarget {
   /**
    * If the socket is not provided, the message will be sent to all sockets.
    */
-  private async sendPacket(packet: Packet, socket?: dgram.Socket) {
+  private async sendPacket(packet: Packet, socket?: dgram.Socket, address?: Host) {
     const message = generatePacket(packet);
     let sockets = this.sockets;
     if (socket != null) sockets = [socket];
@@ -385,7 +406,7 @@ class MDNS extends EventTarget {
         sockets.map((socket) =>
           this.socketMap
             .get(socket)
-            ?.send(message, this._port, this.socketMap.get(socket)?.group),
+            ?.send(message, this._port, address ?? this.socketMap.get(socket)?.group),
         ),
       );
     }
@@ -465,7 +486,7 @@ class MDNS extends EventTarget {
 
   private async handleSocketMessageQuery(
     packet: Packet,
-    _rinfo: dgram.RemoteInfo,
+    rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
     if (packet.flags.type !== PacketType.QUERY) return;
@@ -474,6 +495,7 @@ class MDNS extends EventTarget {
     const additionalQuestionRecords: QuestionRecord[] = [];
     const processedRowIs = new Set<number>();
     let hasHostRecordsBeenProcessed = false;
+    let canResponseBeUnicast = false;
 
     const networkInterfaceName =
       this.socketMap.get(socket)?.networkInterfaceName;
@@ -499,19 +521,23 @@ class MDNS extends EventTarget {
     );
 
     // Handle host questions first
-    const hostQuestionRecords = packet.questions.filter((question) => question.type === QType.A || question.type === QType.AAAA || question.type === QType.ANY);
-    for (const question of hostQuestionRecords) {
-      const foundHostRecords = hostResourceRecords.filter((record) =>
-        record.name === question.name && (record.type === question.type as number || question.type === QType.ANY)
-      )
-      if (question.type !== QType.ANY) {
-        const additionalHostRecords = hostResourceRecords.filter((record) =>
-          record.name === question.name && (record.type === (question.type === QType.A ? RType.AAAA : RType.A))
-        );
-        additionalResourceRecords.push(...additionalHostRecords);
+    for (const question of packet.questions) {
+      if (question.unicast && this._unicast) {
+        canResponseBeUnicast = true;
       }
-      hasHostRecordsBeenProcessed = true;
-      answerResourceRecords.push(...foundHostRecords);
+      if ((question.type === QType.A || question.type === QType.AAAA || question.type === QType.ANY) && !hasHostRecordsBeenProcessed) {
+        const foundHostRecords = hostResourceRecords.filter((record) =>
+          record.name === question.name && (record.type === question.type as number || question.type === QType.ANY)
+        )
+        if (question.type !== QType.ANY) {
+          const additionalHostRecords = hostResourceRecords.filter((record) =>
+            record.name === question.name && (record.type === (question.type === QType.A ? RType.AAAA : RType.A))
+          );
+          additionalResourceRecords.push(...additionalHostRecords);
+        }
+        hasHostRecordsBeenProcessed = true;
+        answerResourceRecords.push(...foundHostRecords);
+      }
     }
 
     const answerResourceRecordRowIs = this.localRecordCache.where(packet.questions);
@@ -572,7 +598,7 @@ class MDNS extends EventTarget {
       additionals: additionalResourceRecords,
       authorities: [],
     };
-    await this.sendPacket(responsePacket, socket);
+    await this.sendPacket(responsePacket, socket, canResponseBeUnicast ? rinfo.address as Host : undefined);
   }
 
   private async handleSocketMessageResponse(
@@ -811,7 +837,6 @@ class MDNS extends EventTarget {
     this.sockets = [];
   }
 
-  // The most important method, this is used to register a service. All platforms support service registration of some kind. Note that some platforms may resolve service name conflicts automatically. This will have to be dealt with later. The service handle has a method that is able to then later unregister the service.
   public registerService(serviceOptions: ServiceOptions) {
     const service: Service = {
       hostname: this._hostname,

@@ -57,7 +57,7 @@ type QuestionRecord = {
   name: string;
   type: QType;
   class: QClass;
-  unicast: boolean;
+  unicast?: boolean;
 };
 
 const enum QClass { // RFC 1035 3.2.4. 3.2.5.

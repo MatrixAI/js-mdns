@@ -1,10 +1,6 @@
 import type { MDNSServiceEvent, MDNSServiceRemovedEvent } from '@/events';
-import type { Host, Hostname, Port } from '@/types';
-import { Timer } from '@matrixai/timer';
+import type { Hostname, Port } from '@/types';
 import MDNS from '@/MDNS';
-import { testUtility } from './utils';
-import dgram from 'dgram';
-import { EventEmitter } from 'stream';
 
 
 describe(MDNS.name, () => {
@@ -30,8 +26,8 @@ describe(MDNS.name, () => {
       port: mdnsPort,
       protocol: "udp",
       type: 'polykey',
-    };
-    mdns2.registerService(service as any)
+    } as Parameters<typeof MDNS.prototype.registerService>[0];
+    mdns2.registerService(service)
     await new Promise((resolve, reject) => {
       mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
         try {
@@ -56,13 +52,13 @@ describe(MDNS.name, () => {
     await mdns2.start({ hostname: mdns2Hostname, port: mdnsPort, advertise: false });
     const service = {
       name: 'test',
-      port: 1234,
+      port: mdnsPort,
       protocol: 'udp',
       type: 'polykey',
       advertise: false,
-    };
-    mdns2.registerService(service as any);
-    mdns1.startQuery(service as any);
+    } as Parameters<typeof MDNS.prototype.registerService>[0];
+    mdns2.registerService(service);
+    mdns1.startQuery(service);
     await new Promise((resolve, reject) => {
       mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
         try {

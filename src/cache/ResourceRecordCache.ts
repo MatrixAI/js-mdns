@@ -298,15 +298,13 @@ class ResourceRecordCache extends EventTarget {
     const delayMilis = ttl * 1000 + record.timestamp - new Date().getTime();
     this.resourceRecordCacheTimer = new Timer(
       async () => {
-        // TODO: Requery missing packets
-        // TODO: Delete Records and Parse
         this.dispatchEvent(
           new MDNSCacheExpiredEvent({
             detail: utils.fromCachableResourceRecordRow(record),
           }),
         );
         this.resourceRecordCache.deleteRow(fastestExpiringRowI);
-        // As the timer is always set to the last element, we can assume that the element we are working on is always the last
+        // As the timer is always set to operate on the last element, we can assume that the element we are working on is always the last
         this.resourceRecordCacheIndexesByExpiration.splice(-1, 1);
         this.resourceRecordCacheTimerReset();
       },

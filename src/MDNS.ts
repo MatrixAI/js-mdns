@@ -141,7 +141,6 @@ class MDNS extends EventTarget {
 
   /**
    * Starts MDNS
-
    * @param opts
    * @param opts.host - The host to bind to. Defaults to `::` for dual stack.
    * @param opts.port - The port to bind to. Defaults to 5353 the default MDNS port.

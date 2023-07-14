@@ -3,7 +3,6 @@ import type {
   Hostname,
   Port,
   Service,
-  ServiceOptions,
   NetworkInterfaces,
 } from './types';
 import {
@@ -154,6 +153,7 @@ class MDNS extends EventTarget {
     groups = ['224.0.0.251', 'ff02::fb'] as Array<Host>,
     hostname = utils.getHostname(),
     reuseAddr = true,
+    advertise = true,
   }: {
     host?: Host | Hostname;
     port?: Port;
@@ -162,6 +162,7 @@ class MDNS extends EventTarget {
     groups?: Array<Host>;
     hostname?: string;
     reuseAddr?: boolean;
+    advertise?: boolean;
   }): Promise<void> {
     if (groups.length < 1) {
       throw new RangeError('Must have at least 1 multicast group');
@@ -331,6 +332,8 @@ class MDNS extends EventTarget {
       (event: MDNSCacheExpiredEvent) =>
         this.processExpiredResourceRecords(event.detail),
     );
+
+    if (!advertise) return;
 
     for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
@@ -553,14 +556,12 @@ class MDNS extends EventTarget {
           {
             name: answerResourceRecord.data,
             class: QClass.IN,
-            type: QType.SRV,
-            unicast: false
+            type: QType.SRV
           },
           {
             name: answerResourceRecord.data,
             class: QClass.IN,
-            type: QType.TXT,
-            unicast: false
+            type: QType.TXT
           }
         );
         if (!hasHostRecordsBeenProcessed) {
@@ -666,7 +667,7 @@ class MDNS extends EventTarget {
           partialService.name = splitName.at(0);
           partialService.type = splitName.at(1)?.slice(1);
           partialService.protocol = splitName.at(2)?.slice(1) as any;
-          partialService.port = responseRecord.data.port;
+          partialService.port = responseRecord.data.port as Port;
           partialService.hostname = responseRecord.data.target as Hostname;
         }
       }
@@ -837,11 +838,29 @@ class MDNS extends EventTarget {
     this.sockets = [];
   }
 
-  public registerService(serviceOptions: ServiceOptions) {
+  public registerService({
+    name,
+    type,
+    protocol,
+    port,
+    txt,
+    advertise = true,
+  }: {
+    name: string;
+    type: string;
+    protocol: 'udp' | 'tcp';
+    port: Port;
+    txt?: Record<string, string>;
+    advertise?: boolean;
+  }) {
     const service: Service = {
+      name,
+      type,
+      protocol,
+      port,
+      txt,
       hostname: this._hostname,
       hosts: [],
-      ...serviceOptions,
     };
     const serviceDomain =
       `_${service.type}._${service.protocol}.local` as Hostname;
@@ -849,6 +868,8 @@ class MDNS extends EventTarget {
 
     this.localServices.set(fdqn, service);
     this.localRecordCacheDirty = true;
+
+    if (!advertise) return;
     const advertisePacket: Packet = {
       id: 0,
       flags: {

@@ -103,7 +103,7 @@ type BaseResourceRecord<T, D> = {
   type: T;
   class: RClass;
 
-  flush: boolean;
+  flush?: boolean;
   ttl: number;
 
   data: D;

@@ -553,14 +553,12 @@ class MDNS extends EventTarget {
           {
             name: answerResourceRecord.data,
             class: QClass.IN,
-            type: QType.SRV,
-            unicast: false
+            type: QType.SRV
           },
           {
             name: answerResourceRecord.data,
             class: QClass.IN,
-            type: QType.TXT,
-            unicast: false
+            type: QType.TXT
           }
         );
         if (!hasHostRecordsBeenProcessed) {

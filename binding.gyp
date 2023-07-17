@@ -34,13 +34,6 @@
               '4506',
             ],
             'AdditionalOptions': [ '/std:c++17' ]
-          },
-          'VCLinkerTool': {
-            'AdditionalDependencies': [
-              # Windows SDK libs required for rocksdb
-              'Shlwapi.lib',
-              'rpcrt4.lib'
-            ]
           }
         },
       }],

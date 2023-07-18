@@ -201,6 +201,7 @@ class MDNS extends EventTarget {
       });
       try {
         const { send, close } = await utils.bindSocket(unicastSocket, port, '::');
+        unicastSocketClose = close;
         socketUtils.disableSocketMulticastAll((unicastSocket as any)._handle.fd);
         this.sockets.push(unicastSocket);
         this.socketMap.set(unicastSocket, {
@@ -212,9 +213,10 @@ class MDNS extends EventTarget {
         unicastSocket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, unicastSocket),
         );
-        unicastSocket.addListener('error', (err) => this.handleSocketError(err));
+        unicastSocket.addListener('error', (err) => this.handleSocketError(err, unicastSocket));
       }
       catch (e) {
+        await unicastSocketClose();
         this._unicast = false;
       }
     }
@@ -874,7 +876,7 @@ class MDNS extends EventTarget {
 
     // Close all Sockets
     for (const socket of this.sockets) {
-      this.socketMap.get(socket)?.close();
+      await this.socketMap.get(socket)?.close();
       this.socketMap.delete(socket);
     }
     this.socketHostTable.clearTable();

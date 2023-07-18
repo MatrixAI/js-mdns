@@ -169,8 +169,9 @@ class MDNS extends EventTarget {
     }
 
     const sockets: Array<dgram.Socket> = [];
-
+    const platform = utils.getPlatform();
     const multicastTTL = 255;
+
 
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
@@ -303,9 +304,10 @@ class MDNS extends EventTarget {
     for (const [socketHost, udpType, networkInterfaceName, scopeid] of [
       ...socketHosts,
     ]) {
+      const linkLocalInterfaceIndex = platform !== "win32" ? networkInterfaceName : scopeid;
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
-          ? ((socketHost + '%' + scopeid) as Host)
+          ? ((socketHost + '%' + linkLocalInterfaceIndex) as Host)
           : socketHost;
 
       for (const group of [...groups]) {
@@ -313,7 +315,7 @@ class MDNS extends EventTarget {
         if (utils.isIPv6(group) && udpType !== 'udp6') continue;
         const linkLocalGroup =
           udpType === 'udp6' && group.startsWith('ff02')
-            ? ((group + '%' + scopeid) as Host)
+            ? ((group + '%' + linkLocalInterfaceIndex) as Host)
             : group;
         const socket = dgram.createSocket({
           type: udpType,
@@ -325,7 +327,7 @@ class MDNS extends EventTarget {
         const socketSend = utils.promisify(socket.send).bind(socket);
         const { p: errorP, rejectP: rejectErrorP } = utils.promise();
         socket.once('error', rejectErrorP);
-        const socketBindP = socketBind(port);
+        const socketBindP = socketBind(port, platform !== "win32" ? linkLocalSocketHost : undefined);
         try {
           await Promise.race([socketBindP, errorP]);
           socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);

@@ -273,11 +273,10 @@ class MDNS extends EventTarget {
     }
     if (socketHosts.length < 1) {
       // TODO: replace this with domain specific error
-      throw new RangeError(
-        'Wildcard did not resolve to any network interfaces',
+      throw new errors.ErrorMDNSInterfaceRange(
+        'MDNS could not resolve any valid network interfaces',
       );
     }
-
 
     // Here we create multiple sockets
     // This may only contain 1
@@ -324,7 +323,7 @@ class MDNS extends EventTarget {
           // EINVAL due to using IPv4 address where udp6 is specified.
           // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
           // or doesn't resolve to IPv4 if udp4 is specified.
-          throw new errors.ErrorMDNSInvalidBindAddress(
+          throw new errors.ErrorMDNSSocketInvalidBindAddress(
             `Could not bind socket to ${linkLocalGroup}`,
             {
               cause: e,
@@ -442,7 +441,7 @@ class MDNS extends EventTarget {
       let sendAddress: Host | undefined;
       if (socketInfo?.unicast) {
         if (address == null) {
-          throw new errors.ErrorMDNSInvalidSendAddress(
+          throw new errors.ErrorMDNSSocketInvalidSendAddress(
             `No send address provided for unicast socket`,
           );
         }
@@ -455,7 +454,7 @@ class MDNS extends EventTarget {
         await socketInfo?.send(message, this._port, sendAddress);
       }
       catch(e) {
-        throw new errors.ErrorMDNSInvalidSendAddress(
+        throw new errors.ErrorMDNSSocketInvalidSendAddress(
           `Could not send packet to ${sendAddress}`,
           {
             cause: e
@@ -823,7 +822,6 @@ class MDNS extends EventTarget {
   }
 
   private async handleSocketError(e: any, socket: dgram.Socket) {
-    // TODO: Dealing with socket errors, look at QUIC for inspiration
     throw new errors.ErrorMDNSSocket(
       `An error occurred on a socket that MDNS has bound to ${socket.address().address}`,
       {

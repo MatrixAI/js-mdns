@@ -36,6 +36,8 @@ cache:
     - ./tmp/chocolatey/
     # `jest` cache is configured in jest.config.js
     - ./tmp/jest/
+     # `npm_config_devdir` cache for `node-gyp` headers and libraries used by windows and macos
+    - ./tmp/node-gyp
 
 stages:
   - check       # Linting, unit tests

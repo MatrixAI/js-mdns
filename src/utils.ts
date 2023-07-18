@@ -17,6 +17,7 @@ import dns from 'dns';
 import os from 'os';
 import { IPv4, IPv6, Validator } from 'ip-num';
 import { RType, RClass, SRVRecord, TXTRecord, QClass } from '@/dns';
+import dgram from 'dgram';
 
 /**
  * Is it an IPv4 address?
@@ -386,6 +387,17 @@ function toServiceResourceRecords(
   });
 }
 
+async function bindSocket(socket: dgram.Socket, port: number, address?: string): Promise<{ send: any, close: any }> {
+  const socketBind = promisify(socket.bind).bind(socket);
+  const socketClose = promisify(socket.close).bind(socket);
+  const socketSend = promisify(socket.send).bind(socket);
+  const { p: errorP, rejectP: rejectErrorP } = promise();
+  socket.once('error', rejectErrorP);
+  const socketBindP = socketBind(port, address);
+  await Promise.race([socketBindP, errorP]);
+  return { send: socketSend, close: socketClose };
+}
+
 export {
   isIPv4,
   isIPv6,
@@ -409,4 +421,5 @@ export {
   toHostResourceRecords,
   isService,
   toServiceResourceRecords,
+  bindSocket
 };

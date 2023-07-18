@@ -34,6 +34,7 @@ import {
 import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
+import { socketUtils } from './native';
 
 const MDNS_TTL = 255;
 
@@ -62,11 +63,16 @@ class MDNS extends EventTarget {
     {
       close: () => Promise<void>;
       send: (...params: Array<any>) => Promise<number>;
-      networkInterfaceName: string;
-      host: string;
+
       udpType: 'udp4' | 'udp6';
+    } & ({
+      unicast: true;
+    } | {
+      unicast?: false;
+      networkInterfaceName: string;
+      host: Host;
       group: Host;
-    }
+    })
   > = new WeakMap();
   protected socketHostTable: Table<{
     networkInterfaceName: string;
@@ -168,25 +174,53 @@ class MDNS extends EventTarget {
       throw new RangeError('Must have at least 1 multicast group');
     }
 
-    const unicastSocket = dgram.createSocket({
+    const sockets: Array<dgram.Socket> = [];
+
+    let unicastSocket = dgram.createSocket({
       type: 'udp6',
       reuseAddr: false,
       ipv6Only
     });
-    const unicastSocketBind = utils.promisify(unicastSocket.bind).bind(unicastSocket);
-    const unicastSocketClose = utils.promisify(unicastSocket.close).bind(unicastSocket);
-    const { p: errorP, rejectP: rejectErrorP } = utils.promise();
-    unicastSocket.once('error', rejectErrorP);
-    const unicastSocketBindP = unicastSocketBind(port, '::');
+    let unicastSocketClose;
     try {
-      await Promise.race([unicastSocketBindP, errorP]);
+      unicastSocketClose = (await utils.bindSocket(unicastSocket, port, '::')).close;
       this._unicast = true;
     }
-    catch (err) {
+    catch (e) {
       this._unicast = false;
     }
     finally {
-      await unicastSocketClose();
+      if (unicastSocketClose != null) {
+        await unicastSocketClose();
+      }
+    }
+
+    if (this._unicast) {
+      unicastSocket = dgram.createSocket({
+        type: 'udp6',
+        reuseAddr: true,
+        ipv6Only
+      });
+      try {
+        const { send, close } = await utils.bindSocket(unicastSocket, port, '::');
+        unicastSocketClose = close;
+        socketUtils.disableSocketMulticastAll((unicastSocket as any)._handle.fd);
+        sockets.push(unicastSocket);
+        this.socketMap.set(unicastSocket, {
+          close,
+          send,
+          udpType: 'udp6',
+          unicast: true
+        });
+        unicastSocket.addListener('message', (msg, rinfo) =>
+          this.handleSocketMessage(msg, rinfo, unicastSocket),
+        );
+        unicastSocket.addListener('error', (err) => this.handleSocketError(err, unicastSocket));
+      }
+      catch (e) {
+        await unicastSocketClose();
+        this._unicast = false;
+      }
     }
 
     // TODO: move this to where it is exactly needed so `hostname` should be the same property
@@ -209,6 +243,7 @@ class MDNS extends EventTarget {
       const networkAddresses = networkInterfaces[networkInterfaceName];
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
+        if (networkAddress.internal) continue;
         const { address, family, netmask } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
@@ -253,7 +288,6 @@ class MDNS extends EventTarget {
     // Here we create multiple sockets
     // This may only contain 1
     // or we end up with multiple sockets we are working with
-    const sockets: Array<dgram.Socket> = [];
     for (const [socketHost, udpType, networkInterfaceName] of [
       ...socketHosts,
     ]) {
@@ -278,9 +312,10 @@ class MDNS extends EventTarget {
         const socketSend = utils.promisify(socket.send).bind(socket);
         const { p: errorP, rejectP: rejectErrorP } = utils.promise();
         socket.once('error', rejectErrorP);
-        const socketBindP = socketBind(port);
+        const socketBindP = socketBind(port, linkLocalGroup);
         try {
           await Promise.race([socketBindP, errorP]);
+          socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
           socket.setMulticastInterface(linkLocalSocketHost);
           socket.addMembership(linkLocalGroup, linkLocalSocketHost);
           socket.setMulticastTTL(MDNS_TTL);
@@ -296,7 +331,7 @@ class MDNS extends EventTarget {
           // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
           // or doesn't resolve to IPv4 if udp4 is specified.
           throw new errors.ErrorMDNSInvalidBindAddress(
-            'Could not bind socket',
+            `Could not bind socket to ${linkLocalGroup}`,
             {
               cause: e,
             },
@@ -307,7 +342,7 @@ class MDNS extends EventTarget {
         socket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, socket),
         );
-        socket.addListener('error', (...p) => this.handleSocketError(...p));
+        socket.addListener('error', (err) => this.handleSocketError(err, socket));
 
         this.socketMap.set(socket, {
           close: socketClose,
@@ -337,7 +372,7 @@ class MDNS extends EventTarget {
 
     for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
-      if (socketInfo == null) continue;
+      if (socketInfo == null || socketInfo.unicast) continue;
       const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
       const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
       const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname);
@@ -398,29 +433,37 @@ class MDNS extends EventTarget {
   }
 
   /**
-   * If the socket is not provided, the message will be sent to all sockets.
+   * If the socket is not provided, the message will be sent to all multicast sockets.
    */
   private async sendPacket(packet: Packet, socket?: dgram.Socket, address?: Host) {
     const message = generatePacket(packet);
-    let sockets = this.sockets;
+    let sockets = this.sockets.filter((s) => this.socketMap.get(s)?.unicast !== true);
     if (socket != null) sockets = [socket];
-    try {
-      await Promise.all(
-        sockets.map((socket) =>
-          this.socketMap
-            .get(socket)
-            ?.send(message, this._port, address ?? this.socketMap.get(socket)?.group),
-        ),
-      );
-    }
-    catch (e) {
-      // TODO: error handling
-      throw new errors.ErrorMDNSInvalidSendAddress(
-        `Could not send packet to ...`,
-        {
-          cause: e
+    for (const socket of sockets) {
+      const socketInfo = this.socketMap.get(socket);
+      let sendAddress: Host | undefined;
+      if (socketInfo?.unicast) {
+        if (address == null) {
+          throw new errors.ErrorMDNSInvalidSendAddress(
+            `No send address provided for unicast socket`,
+          );
         }
-      );
+        sendAddress = address
+      }
+      else {
+        sendAddress = address ?? socketInfo?.group;
+      }
+      try {
+        await socketInfo?.send(message, this._port, sendAddress);
+      }
+      catch(e) {
+        throw new errors.ErrorMDNSInvalidSendAddress(
+          `Could not send packet to ${sendAddress}`,
+          {
+            cause: e
+          }
+        );
+      }
     }
   }
 
@@ -429,49 +472,52 @@ class MDNS extends EventTarget {
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
-    // We check if the received message is from the same subnet in order to determine if we should respond.
-    try {
-      const addressRowI = this.socketHostTable
-        .whereRows(['address'], [this.socketMap.get(socket)?.host])
-        .at(0);
-      const address = addressRowI
-        ? this.socketHostTable.getRow(addressRowI)
-        : undefined;
-      if (address != null) {
-        const mask = address.parsedMask;
-        const localAddress = address.parsedAddress;
-        let remoteAddress: IPv4 | IPv6;
-        let remoteNetworkInterfaceName: string | undefined;
-        if (address.family === 'IPv4') {
-          remoteAddress = IPv4.fromString(rinfo.address);
+    const socketInfo = this.socketMap.get(socket);
+    if (!socketInfo?.unicast) {
+      // We check if the received message is from the same subnet in order to determine if we should respond.
+      try {
+        const addressRowI = this.socketHostTable
+          .whereRows(['address'], [socketInfo?.host])
+          .at(0);
+        const address = addressRowI
+          ? this.socketHostTable.getRow(addressRowI)
+          : undefined;
+        if (address != null) {
+          const mask = address.parsedMask;
+          const localAddress = address.parsedAddress;
+          let remoteAddress: IPv4 | IPv6;
+          let remoteNetworkInterfaceName: string | undefined;
+          if (address.family === 'IPv4') {
+            remoteAddress = IPv4.fromString(rinfo.address);
+            if (
+              (mask.value & remoteAddress.value) !==
+              (mask.value & localAddress.value)
+            ) {
+              return;
+            }
+          } else {
+            const [remoteAddress_, remoteNetworkInterfaceName_] =
+              rinfo.address.split('%', 2);
+            remoteAddress = IPv6.fromString(remoteAddress_);
+            remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
+          }
           if (
             (mask.value & remoteAddress.value) !==
             (mask.value & localAddress.value)
           ) {
             return;
+          } else if (
+            remoteNetworkInterfaceName != null &&
+            remoteNetworkInterfaceName !== address.networkInterfaceName
+          ) {
+            return;
           }
-        } else {
-          const [remoteAddress_, remoteNetworkInterfaceName_] =
-            rinfo.address.split('%', 2);
-          remoteAddress = IPv6.fromString(remoteAddress_);
-          remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
         }
-        if (
-          (mask.value & remoteAddress.value) !==
-          (mask.value & localAddress.value)
-        ) {
-          return;
-        } else if (
-          remoteNetworkInterfaceName != null &&
-          remoteNetworkInterfaceName !== address.networkInterfaceName
-        ) {
-          return;
-        }
+      } catch (_err) {
+        this.logger.warn(
+          `Parsing remote address failed: ${rinfo.address}`,
+        );
       }
-    } catch (_err) {
-      this.logger.warn(
-        `Parsing remote address failed: ${rinfo.address}`,
-      );
     }
 
     let packet: Packet | undefined;
@@ -492,6 +538,8 @@ class MDNS extends EventTarget {
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
+    const socketInfo = this.socketMap.get(socket);
+    if (socketInfo?.unicast) return;
     if (packet.flags.type !== PacketType.QUERY) return;
     const answerResourceRecords: ResourceRecord[] = [];
     const additionalResourceRecords: ResourceRecord[] = [];
@@ -500,8 +548,7 @@ class MDNS extends EventTarget {
     let hasHostRecordsBeenProcessed = false;
     let canResponseBeUnicast = false;
 
-    const networkInterfaceName =
-      this.socketMap.get(socket)?.networkInterfaceName;
+    const networkInterfaceName = socketInfo?.networkInterfaceName;
 
     const ips = this.socketHostTable
       .whereRows(['networkInterfaceName'], [networkInterfaceName])
@@ -777,10 +824,10 @@ class MDNS extends EventTarget {
     return relatedFdqns;
   }
 
-  private async handleSocketError(e: any) {
+  private async handleSocketError(e: any, socket: dgram.Socket) {
     // TODO: Dealing with socket errors, look at QUIC for inspiration
     throw new errors.ErrorMDNSSocket(
-      'An error occured on a socket that MDNS has bound to...',
+      `An error occurred on a socket that MDNS has bound to ${socket.address().address}`,
       {
         cause: e
       }
@@ -797,12 +844,11 @@ class MDNS extends EventTarget {
       advertisement.cancel();
     }
 
-
     // Send the goodbye packet
     const serviceResourceRecords = utils.toServiceResourceRecords([...this.localServices.values()], this._hostname, false, 0);
     const goodbyePacketPromises = this.sockets.flatMap((socket) => {
       const socketInfo = this.socketMap.get(socket);
-      if (socketInfo == null) return [];
+      if (socketInfo == null || socketInfo.unicast) return [];
       const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
       const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
       const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname, true, 0);
@@ -831,7 +877,8 @@ class MDNS extends EventTarget {
 
     // Close all Sockets
     for (const socket of this.sockets) {
-      this.socketMap.get(socket)?.close();
+      const socketInfo = this.socketMap.get(socket);
+      await socketInfo?.close();
       this.socketMap.delete(socket);
     }
     this.socketHostTable.clearTable();

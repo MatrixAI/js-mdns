@@ -174,6 +174,8 @@ class MDNS extends EventTarget {
       throw new RangeError('Must have at least 1 multicast group');
     }
 
+    const sockets: Array<dgram.Socket> = [];
+
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
       reuseAddr: false,
@@ -203,7 +205,7 @@ class MDNS extends EventTarget {
         const { send, close } = await utils.bindSocket(unicastSocket, port, '::');
         unicastSocketClose = close;
         socketUtils.disableSocketMulticastAll((unicastSocket as any)._handle.fd);
-        this.sockets.push(unicastSocket);
+        sockets.push(unicastSocket);
         this.socketMap.set(unicastSocket, {
           close,
           send,
@@ -286,7 +288,6 @@ class MDNS extends EventTarget {
     // Here we create multiple sockets
     // This may only contain 1
     // or we end up with multiple sockets we are working with
-    const sockets: Array<dgram.Socket> = [];
     for (const [socketHost, udpType, networkInterfaceName] of [
       ...socketHosts,
     ]) {
@@ -876,7 +877,8 @@ class MDNS extends EventTarget {
 
     // Close all Sockets
     for (const socket of this.sockets) {
-      await this.socketMap.get(socket)?.close();
+      const socketInfo = this.socketMap.get(socket);
+      await socketInfo?.close();
       this.socketMap.delete(socket);
     }
     this.socketHostTable.clearTable();

@@ -216,6 +216,8 @@ class MDNS extends EventTarget {
           unicast: true,
         });
         unicastSocket.setTTL(multicastTTL);
+        unicastSocket.setMulticastTTL(0);
+        unicastSocket.setMulticastLoopback(false);
         unicastSocket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, unicastSocket),
         );

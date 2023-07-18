@@ -922,9 +922,9 @@ class MDNS extends EventTarget {
       false,
       0,
     );
-    const goodbyePacketPromises = this.sockets.flatMap((socket) => {
+    for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
-      if (socketInfo == null || socketInfo.unicast) return [];
+      if (socketInfo == null || socketInfo.unicast) continue;
       const hostRowIs = this.socketHostTable.whereRows(
         ['networkInterfaceName'],
         [socketInfo?.networkInterfaceName],
@@ -950,9 +950,8 @@ class MDNS extends EventTarget {
         additionals: [],
         authorities: [],
       };
-      return this.sendPacket(advertisePacket, socket);
-    });
-    await Promise.all(goodbyePacketPromises);
+      await this.sendPacket(advertisePacket, socket);
+    }
 
     // Clear Services and Cache
     await this.localRecordCache.destroy();

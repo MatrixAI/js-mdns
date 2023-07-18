@@ -231,7 +231,7 @@ class MDNS extends EventTarget {
 
     this.logger.info(`Start ${this.constructor.name}`);
 
-    const socketHosts: Array<[Host, 'udp4' | 'udp6', string]> = [];
+    const socketHosts: Array<[Host, 'udp4' | 'udp6', string, number?]> = [];
     // When binding to wild card
     // We explicitly find out all the interfaces we are going to bind to
     // This is because we only want to respond on the interface where we received
@@ -246,15 +246,21 @@ class MDNS extends EventTarget {
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
         if (networkAddress.internal) continue;
-        const { address, family, netmask } = networkAddress;
+        const { address, family, netmask, scopeid } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
-          socketHosts.push([address as Host, 'udp6', networkInterfaceName]);
+          socketHosts.push([
+            address as Host,
+            'udp6',
+            networkInterfaceName,
+            scopeid,
+          ]);
         } else {
           socketHosts.push([
             address as Host,
             family === 'IPv4' ? 'udp4' : 'udp6',
             networkInterfaceName,
+            scopeid,
           ]);
         }
         try {
@@ -292,19 +298,20 @@ class MDNS extends EventTarget {
     // Here we create multiple sockets
     // This may only contain 1
     // or we end up with multiple sockets we are working with
-    for (const [socketHost, udpType, networkInterfaceName] of [
+    for (const [socketHost, udpType, networkInterfaceName, scopeid] of [
       ...socketHosts,
     ]) {
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
-          ? ((socketHost + '%' + networkInterfaceName) as Host)
+          ? ((socketHost + '%' + scopeid) as Host)
           : socketHost;
+
       for (const group of [...groups]) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
         if (utils.isIPv6(group) && udpType !== 'udp6') continue;
         const linkLocalGroup =
           udpType === 'udp6' && group.startsWith('ff02')
-            ? ((group + '%' + networkInterfaceName) as Host)
+            ? ((group + '%' + scopeid) as Host)
             : group;
         const socket = dgram.createSocket({
           type: udpType,
@@ -316,7 +323,7 @@ class MDNS extends EventTarget {
         const socketSend = utils.promisify(socket.send).bind(socket);
         const { p: errorP, rejectP: rejectErrorP } = utils.promise();
         socket.once('error', rejectErrorP);
-        const socketBindP = socketBind(port, linkLocalGroup);
+        const socketBindP = socketBind(port);
         try {
           await Promise.race([socketBindP, errorP]);
           socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);

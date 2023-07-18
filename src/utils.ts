@@ -188,6 +188,18 @@ function getHostname(): Hostname {
   return os.hostname() as Hostname;
 }
 
+function getPlatform():
+  | 'aix'
+  | 'android'
+  | 'darwin'
+  | 'freebsd'
+  | 'linux'
+  | 'openbsd'
+  | 'sunos'
+  | 'win32' {
+  return os.platform() as any;
+}
+
 /**
  * Convert callback-style to promise-style
  * If this is applied to overloaded function
@@ -416,6 +428,7 @@ export {
   resolveHost,
   getNetworkInterfaces,
   getHostname,
+  getPlatform,
   promisify,
   promise,
   bufferWrap,

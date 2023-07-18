@@ -59,6 +59,7 @@ type NetworkAddress = {
   family: 'IPv4' | 'IPv6';
   internal: boolean;
   netmask: string;
+  scopeid?: number;
 };
 
 type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;

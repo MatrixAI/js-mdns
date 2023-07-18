@@ -204,9 +204,9 @@ class MDNS extends EventTarget {
           '::',
         );
         unicastSocketClose = close;
-        socketUtils.disableSocketMulticastAll(
-          (unicastSocket as any)._handle.fd,
-        );
+        if (platform === "linux") {
+          socketUtils.disableSocketMulticastAll((unicastSocket as any)._handle.fd);
+        }
         sockets.push(unicastSocket);
         this.socketMap.set(unicastSocket, {
           close,
@@ -330,7 +330,9 @@ class MDNS extends EventTarget {
         const socketBindP = socketBind(port, platform !== "win32" ? linkLocalSocketHost : undefined);
         try {
           await Promise.race([socketBindP, errorP]);
-          socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
+          if (platform === "linux") {
+            socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
+          }
           socket.setMulticastInterface(linkLocalSocketHost);
           socket.addMembership(linkLocalGroup, linkLocalSocketHost);
           socket.setMulticastTTL(multicastTTL);

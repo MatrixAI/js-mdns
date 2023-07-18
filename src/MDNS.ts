@@ -36,12 +36,6 @@ import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 import { socketUtils } from './native';
 
-const MDNS_TTL = 255;
-
-// RFC 6762 10. TTLs of various records
-const HOSTNAME_RR_TTL = 120;
-const OTHER_RR_TTL = 4500;
-
 interface MDNS extends StartStop {}
 @StartStop()
 class MDNS extends EventTarget {
@@ -158,16 +152,13 @@ class MDNS extends EventTarget {
     ipv6Only = false,
     groups = ['224.0.0.251', 'ff02::fb'] as Array<Host>,
     hostname = utils.getHostname(),
-    reuseAddr = true,
     advertise = true,
   }: {
-    host?: Host | Hostname;
     port?: Port;
     ipv6Only?: boolean;
 
     groups?: Array<Host>;
     hostname?: string;
-    reuseAddr?: boolean;
     advertise?: boolean;
   }): Promise<void> {
     if (groups.length < 1) {
@@ -175,6 +166,8 @@ class MDNS extends EventTarget {
     }
 
     const sockets: Array<dgram.Socket> = [];
+
+    const multicastTTL = 255;
 
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
@@ -212,6 +205,7 @@ class MDNS extends EventTarget {
           udpType: 'udp6',
           unicast: true
         });
+        unicastSocket.setTTL(multicastTTL);
         unicastSocket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, unicastSocket),
         );
@@ -293,7 +287,7 @@ class MDNS extends EventTarget {
     ]) {
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
-          ? ((socketHost + '%' + networkInterfaceName) as Host)
+          ? (socketHost + '%' + networkInterfaceName as Host)
           : socketHost;
       for (const group of [...groups]) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
@@ -304,7 +298,7 @@ class MDNS extends EventTarget {
             : group;
         const socket = dgram.createSocket({
           type: udpType,
-          reuseAddr,
+          reuseAddr: true,
           ipv6Only,
         });
         const socketBind = utils.promisify(socket.bind).bind(socket);
@@ -318,8 +312,8 @@ class MDNS extends EventTarget {
           socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
           socket.setMulticastInterface(linkLocalSocketHost);
           socket.addMembership(linkLocalGroup, linkLocalSocketHost);
-          socket.setMulticastTTL(MDNS_TTL);
-          socket.setTTL(MDNS_TTL);
+          socket.setMulticastTTL(multicastTTL);
+          socket.setTTL(multicastTTL);
           socket.setMulticastLoopback(true);
         } catch (e) {
           for (const socket of sockets.reverse()) {
@@ -437,8 +431,12 @@ class MDNS extends EventTarget {
    */
   private async sendPacket(packet: Packet, socket?: dgram.Socket, address?: Host) {
     const message = generatePacket(packet);
-    let sockets = this.sockets.filter((s) => this.socketMap.get(s)?.unicast !== true);
-    if (socket != null) sockets = [socket];
+    let sockets: dgram.Socket[];
+    if (socket == null) {
+      sockets = this.sockets.filter((s) => this.socketMap.get(s)?.unicast !== true);
+    } else {
+      sockets = [socket];
+    }
     for (const socket of sockets) {
       const socketInfo = this.socketMap.get(socket);
       let sendAddress: Host | undefined;

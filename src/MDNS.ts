@@ -172,7 +172,6 @@ class MDNS extends EventTarget {
     const platform = utils.getPlatform();
     const multicastTTL = 255;
 
-
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
       reuseAddr: false,
@@ -204,8 +203,10 @@ class MDNS extends EventTarget {
           '::',
         );
         unicastSocketClose = close;
-        if (platform === "linux") {
-          socketUtils.disableSocketMulticastAll((unicastSocket as any)._handle.fd);
+        if (platform === 'linux') {
+          socketUtils.disableSocketMulticastAll(
+            (unicastSocket as any)._handle.fd,
+          );
         }
         sockets.push(unicastSocket);
         this.socketMap.set(unicastSocket, {
@@ -281,7 +282,7 @@ class MDNS extends EventTarget {
               networkInterfaceName,
               parsedAddress: IPv6.fromString(address),
               parsedMask: new IPv6Mask(netmask),
-              scopeid: networkAddress.scopeid as number
+              scopeid: networkAddress.scopeid as number,
             });
           }
         } catch (err) {
@@ -304,7 +305,8 @@ class MDNS extends EventTarget {
     for (const [socketHost, udpType, networkInterfaceName, scopeid] of [
       ...socketHosts,
     ]) {
-      const linkLocalInterfaceIndex = platform !== "win32" ? networkInterfaceName : scopeid;
+      const linkLocalInterfaceIndex =
+        platform !== 'win32' ? networkInterfaceName : scopeid;
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
           ? ((socketHost + '%' + linkLocalInterfaceIndex) as Host)
@@ -327,10 +329,13 @@ class MDNS extends EventTarget {
         const socketSend = utils.promisify(socket.send).bind(socket);
         const { p: errorP, rejectP: rejectErrorP } = utils.promise();
         socket.once('error', rejectErrorP);
-        const socketBindP = socketBind(port, platform !== "win32" ? linkLocalSocketHost : undefined);
+        const socketBindP = socketBind(
+          port,
+          platform !== 'win32' ? linkLocalSocketHost : undefined,
+        );
         try {
           await Promise.race([socketBindP, errorP]);
-          if (platform === "linux") {
+          if (platform === 'linux') {
             socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
           }
           socket.setMulticastInterface(linkLocalSocketHost);
@@ -543,10 +548,9 @@ class MDNS extends EventTarget {
             return;
           } else if (
             remoteNetworkInterfaceIndex != null &&
-            (
-              remoteNetworkInterfaceIndex !== address.networkInterfaceName
-              || parseInt(remoteNetworkInterfaceIndex) !== (address as any).scopeid
-            )
+            (remoteNetworkInterfaceIndex !== address.networkInterfaceName ||
+              parseInt(remoteNetworkInterfaceIndex) !==
+                (address as any).scopeid)
           ) {
             return;
           }

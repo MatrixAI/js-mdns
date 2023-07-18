@@ -327,7 +327,7 @@ class MDNS extends EventTarget {
           socket.setMulticastLoopback(true);
         } catch (e) {
           for (const socket of sockets.reverse()) {
-            await socket.close();
+            socket.close();
           }
           // TODO: edit comment
           // Possible binding failure due to EINVAL or ENOTFOUND.
@@ -932,10 +932,10 @@ class MDNS extends EventTarget {
     await Promise.all(goodbyePacketPromises);
 
     // Clear Services and Cache
-    this.localRecordCache.destroy();
+    await this.localRecordCache.destroy();
     this.localRecordCacheDirty = true;
     this.localServices.clear();
-    this.networkRecordCache.destroy();
+    await this.networkRecordCache.destroy();
     this.networkServices.clear();
 
     // Close all Sockets

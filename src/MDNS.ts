@@ -1,17 +1,11 @@
+import type { Host, Hostname, Port, Service, NetworkInterfaces } from './types';
+import type { MDNSCacheExpiredEvent } from './cache';
 import type {
-  Host,
-  Hostname,
-  Port,
-  Service,
-  NetworkInterfaces,
-} from './types';
-import {
   CachableResourceRecord,
   Packet,
   QuestionRecord,
   ResourceRecord,
 } from './dns';
-import type { MDNSCacheExpiredEvent } from './cache';
 import * as dgram from 'dgram';
 import { StartStop, ready } from '@matrixai/async-init/dist/StartStop';
 import { Timer } from '@matrixai/timer';
@@ -59,28 +53,36 @@ class MDNS extends EventTarget {
       send: (...params: Array<any>) => Promise<number>;
 
       udpType: 'udp4' | 'udp6';
-    } & ({
-      unicast: true;
-    } | {
-      unicast?: false;
-      networkInterfaceName: string;
-      host: Host;
-      group: Host;
-    })
+    } & (
+      | {
+          unicast: true;
+        }
+      | {
+          unicast?: false;
+          networkInterfaceName: string;
+          host: Host;
+          group: Host;
+        }
+    )
   > = new WeakMap();
-  protected socketHostTable: Table<{
-    networkInterfaceName: string;
-    address: string;
-    netmask: string;
-  } & ({
-    parsedAddress: IPv4;
-    parsedMask: IPv4Mask;
-    family: 'IPv4';
-  } | {
-    parsedAddress: IPv6;
-    parsedMask: IPv6Mask;
-    family: 'IPv6';
-  })> = new Table(
+  protected socketHostTable: Table<
+    {
+      networkInterfaceName: string;
+      address: string;
+      netmask: string;
+    } & (
+      | {
+          parsedAddress: IPv4;
+          parsedMask: IPv4Mask;
+          family: 'IPv4';
+        }
+      | {
+          parsedAddress: IPv6;
+          parsedMask: IPv6Mask;
+          family: 'IPv6';
+        }
+    )
+  > = new Table(
     ['networkInterfaceName', 'address', 'family'],
     [['networkInterfaceName'], ['address']],
   );
@@ -172,17 +174,16 @@ class MDNS extends EventTarget {
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
       reuseAddr: false,
-      ipv6Only
+      ipv6Only,
     });
     let unicastSocketClose;
     try {
-      unicastSocketClose = (await utils.bindSocket(unicastSocket, port, '::')).close;
+      unicastSocketClose = (await utils.bindSocket(unicastSocket, port, '::'))
+        .close;
       this._unicast = true;
-    }
-    catch (e) {
+    } catch (e) {
       this._unicast = false;
-    }
-    finally {
+    } finally {
       if (unicastSocketClose != null) {
         await unicastSocketClose();
       }
@@ -192,26 +193,33 @@ class MDNS extends EventTarget {
       unicastSocket = dgram.createSocket({
         type: 'udp6',
         reuseAddr: true,
-        ipv6Only
+        ipv6Only,
       });
       try {
-        const { send, close } = await utils.bindSocket(unicastSocket, port, '::');
+        const { send, close } = await utils.bindSocket(
+          unicastSocket,
+          port,
+          '::',
+        );
         unicastSocketClose = close;
-        socketUtils.disableSocketMulticastAll((unicastSocket as any)._handle.fd);
+        socketUtils.disableSocketMulticastAll(
+          (unicastSocket as any)._handle.fd,
+        );
         sockets.push(unicastSocket);
         this.socketMap.set(unicastSocket, {
           close,
           send,
           udpType: 'udp6',
-          unicast: true
+          unicast: true,
         });
         unicastSocket.setTTL(multicastTTL);
         unicastSocket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, unicastSocket),
         );
-        unicastSocket.addListener('error', (err) => this.handleSocketError(err, unicastSocket));
-      }
-      catch (e) {
+        unicastSocket.addListener('error', (err) =>
+          this.handleSocketError(err, unicastSocket),
+        );
+      } catch (e) {
         await unicastSocketClose();
         this._unicast = false;
       }
@@ -242,9 +250,12 @@ class MDNS extends EventTarget {
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
           socketHosts.push([address as Host, 'udp6', networkInterfaceName]);
-        }
-        else {
-          socketHosts.push([address as Host, family === 'IPv4' ? 'udp4' : 'udp6', networkInterfaceName])
+        } else {
+          socketHosts.push([
+            address as Host,
+            family === 'IPv4' ? 'udp4' : 'udp6',
+            networkInterfaceName,
+          ]);
         }
         try {
           if (family === 'IPv4') {
@@ -255,8 +266,7 @@ class MDNS extends EventTarget {
               parsedAddress: IPv4.fromString(address),
               parsedMask: new IPv4Mask(netmask),
             });
-          }
-          else {
+          } else {
             this.socketHostTable.insertRow({
               ...networkAddress,
               family: 'IPv6',
@@ -265,9 +275,10 @@ class MDNS extends EventTarget {
               parsedMask: new IPv6Mask(netmask),
             });
           }
-        }
-        catch (err) {
-          this.logger.warn(`Parsing network interface address failed: ${address}`)
+        } catch (err) {
+          this.logger.warn(
+            `Parsing network interface address failed: ${address}`,
+          );
         }
       }
     }
@@ -286,7 +297,7 @@ class MDNS extends EventTarget {
     ]) {
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
-          ? (socketHost + '%' + networkInterfaceName as Host)
+          ? ((socketHost + '%' + networkInterfaceName) as Host)
           : socketHost;
       for (const group of [...groups]) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
@@ -335,7 +346,9 @@ class MDNS extends EventTarget {
         socket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, socket),
         );
-        socket.addListener('error', (err) => this.handleSocketError(err, socket));
+        socket.addListener('error', (err) =>
+          this.handleSocketError(err, socket),
+        );
 
         this.socketMap.set(socket, {
           close: socketClose,
@@ -353,8 +366,11 @@ class MDNS extends EventTarget {
     this._port = port;
     this._groups = groups;
     this._hostname = hostname as Hostname;
-    this.localRecordCache = await ResourceRecordCache.createResourceRecordCache({ timerDisabled: true });
-    this.networkRecordCache = await ResourceRecordCache.createResourceRecordCache();
+    this.localRecordCache = await ResourceRecordCache.createResourceRecordCache(
+      { timerDisabled: true },
+    );
+    this.networkRecordCache =
+      await ResourceRecordCache.createResourceRecordCache();
     this.networkRecordCache.addEventListener(
       'expired',
       (event: MDNSCacheExpiredEvent) =>
@@ -366,9 +382,17 @@ class MDNS extends EventTarget {
     for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
       if (socketInfo == null || socketInfo.unicast) continue;
-      const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
-      const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
-      const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname);
+      const hostRowIs = this.socketHostTable.whereRows(
+        ['networkInterfaceName'],
+        [socketInfo?.networkInterfaceName],
+      );
+      const addresses = hostRowIs.flatMap(
+        (rowI) => this.socketHostTable.getRow(rowI)?.address ?? [],
+      ) as Host[];
+      const hostResourceRecords = utils.toHostResourceRecords(
+        addresses,
+        this._hostname,
+      );
       const advertisePacket: Packet = {
         id: 0,
         flags: {
@@ -411,15 +435,12 @@ class MDNS extends EventTarget {
       const rejectP = () => {
         this.advertisements.delete(advertisementKey);
         reject();
-      }
+      };
       await this.sendPacket(packet, socket).catch(rejectP);
-      timer = new Timer(
-        async () => {
-          await this.sendPacket(packet, socket).catch(rejectP);
-          resolve();
-        },
-        1000,
-      );
+      timer = new Timer(async () => {
+        await this.sendPacket(packet, socket).catch(rejectP);
+        resolve();
+      }, 1000);
     }, abortController);
 
     this.advertisements.set(advertisementKey, promise);
@@ -428,11 +449,17 @@ class MDNS extends EventTarget {
   /**
    * If the socket is not provided, the message will be sent to all multicast sockets.
    */
-  private async sendPacket(packet: Packet, socket?: dgram.Socket, address?: Host) {
+  private async sendPacket(
+    packet: Packet,
+    socket?: dgram.Socket,
+    address?: Host,
+  ) {
     const message = generatePacket(packet);
     let sockets: dgram.Socket[];
     if (socket == null) {
-      sockets = this.sockets.filter((s) => this.socketMap.get(s)?.unicast !== true);
+      sockets = this.sockets.filter(
+        (s) => this.socketMap.get(s)?.unicast !== true,
+      );
     } else {
       sockets = [socket];
     }
@@ -445,20 +472,18 @@ class MDNS extends EventTarget {
             `No send address provided for unicast socket`,
           );
         }
-        sendAddress = address
-      }
-      else {
+        sendAddress = address;
+      } else {
         sendAddress = address ?? socketInfo?.group;
       }
       try {
         await socketInfo?.send(message, this._port, sendAddress);
-      }
-      catch(e) {
+      } catch (e) {
         throw new errors.ErrorMDNSSocketInvalidSendAddress(
           `Could not send packet to ${sendAddress}`,
           {
-            cause: e
-          }
+            cause: e,
+          },
         );
       }
     }
@@ -511,17 +536,14 @@ class MDNS extends EventTarget {
           }
         }
       } catch (_err) {
-        this.logger.warn(
-          `Parsing remote address failed: ${rinfo.address}`,
-        );
+        this.logger.warn(`Parsing remote address failed: ${rinfo.address}`);
       }
     }
 
     let packet: Packet | undefined;
     try {
       packet = parsePacket(msg);
-    } catch (err) {
-    }
+    } catch (err) {}
     if (packet == null) return;
     if (packet.flags.type === PacketType.QUERY) {
       await this.handleSocketMessageQuery(packet, rinfo, socket);
@@ -558,7 +580,7 @@ class MDNS extends EventTarget {
         utils.toServiceResourceRecords(
           [...this.localServices.values()],
           this._hostname,
-        ) as CachableResourceRecord[]
+        ) as CachableResourceRecord[],
       );
     }
 
@@ -572,13 +594,24 @@ class MDNS extends EventTarget {
       if (question.unicast && this._unicast) {
         canResponseBeUnicast = true;
       }
-      if ((question.type === QType.A || question.type === QType.AAAA || question.type === QType.ANY) && !hasHostRecordsBeenProcessed) {
-        const foundHostRecords = hostResourceRecords.filter((record) =>
-          record.name === question.name && (record.type === question.type as number || question.type === QType.ANY)
-        )
+      if (
+        (question.type === QType.A ||
+          question.type === QType.AAAA ||
+          question.type === QType.ANY) &&
+        !hasHostRecordsBeenProcessed
+      ) {
+        const foundHostRecords = hostResourceRecords.filter(
+          (record) =>
+            record.name === question.name &&
+            (record.type === (question.type as number) ||
+              question.type === QType.ANY),
+        );
         if (question.type !== QType.ANY) {
-          const additionalHostRecords = hostResourceRecords.filter((record) =>
-            record.name === question.name && (record.type === (question.type === QType.A ? RType.AAAA : RType.A))
+          const additionalHostRecords = hostResourceRecords.filter(
+            (record) =>
+              record.name === question.name &&
+              record.type ===
+                (question.type === QType.A ? RType.AAAA : RType.A),
           );
           additionalResourceRecords.push(...additionalHostRecords);
         }
@@ -587,11 +620,15 @@ class MDNS extends EventTarget {
       }
     }
 
-    const answerResourceRecordRowIs = this.localRecordCache.where(packet.questions);
+    const answerResourceRecordRowIs = this.localRecordCache.where(
+      packet.questions,
+    );
     for (const answerResourceRecordRowI of answerResourceRecordRowIs) {
       processedRowIs.add(answerResourceRecordRowI);
     }
-    answerResourceRecords.push(...this.localRecordCache.get(answerResourceRecordRowIs));
+    answerResourceRecords.push(
+      ...this.localRecordCache.get(answerResourceRecordRowIs),
+    );
 
     for (const answerResourceRecord of answerResourceRecords) {
       // RFC 6763 12.1. Additionals in PTR
@@ -600,13 +637,13 @@ class MDNS extends EventTarget {
           {
             name: answerResourceRecord.data,
             class: QClass.IN,
-            type: QType.SRV
+            type: QType.SRV,
           },
           {
             name: answerResourceRecord.data,
             class: QClass.IN,
-            type: QType.TXT
-          }
+            type: QType.TXT,
+          },
         );
         if (!hasHostRecordsBeenProcessed) {
           hasHostRecordsBeenProcessed = true;
@@ -614,18 +651,25 @@ class MDNS extends EventTarget {
         }
       }
       // RFC 6763 12.2. Additionals in PTR
-      else if (answerResourceRecord.type === RType.SRV && !hasHostRecordsBeenProcessed) {
+      else if (
+        answerResourceRecord.type === RType.SRV &&
+        !hasHostRecordsBeenProcessed
+      ) {
         hasHostRecordsBeenProcessed = true;
         additionalResourceRecords.push(...hostResourceRecords);
       }
     }
 
     // Iterate over the found additional records. If it has already been processed, we do not add it to the additional records, this is done so that we can avoid duplicate records in the answer and additional sections.
-    const additionalQuestionRecordRowIs = this.localRecordCache.where(additionalQuestionRecords);
+    const additionalQuestionRecordRowIs = this.localRecordCache.where(
+      additionalQuestionRecords,
+    );
     for (const additionalQuestionRecordRowI of additionalQuestionRecordRowIs) {
       if (!processedRowIs.has(additionalQuestionRecordRowI)) {
         processedRowIs.add(additionalQuestionRecordRowI);
-        additionalResourceRecords.push(...this.localRecordCache.get([additionalQuestionRecordRowI]));
+        additionalResourceRecords.push(
+          ...this.localRecordCache.get([additionalQuestionRecordRowI]),
+        );
       }
     }
 
@@ -643,7 +687,11 @@ class MDNS extends EventTarget {
       additionals: additionalResourceRecords,
       authorities: [],
     };
-    await this.sendPacket(responsePacket, socket, canResponseBeUnicast ? rinfo.address as Host : undefined);
+    await this.sendPacket(
+      responsePacket,
+      socket,
+      canResponseBeUnicast ? (rinfo.address as Host) : undefined,
+    );
   }
 
   private async handleSocketMessageResponse(
@@ -787,7 +835,9 @@ class MDNS extends EventTarget {
     }
   }
 
-  private extractRelatedFdqns(resourceRecords: ResourceRecord | Array<ResourceRecord>): Array<Hostname> {
+  private extractRelatedFdqns(
+    resourceRecords: ResourceRecord | Array<ResourceRecord>,
+  ): Array<Hostname> {
     if (!Array.isArray(resourceRecords)) {
       return this.extractRelatedFdqns([resourceRecords]);
     }
@@ -823,11 +873,13 @@ class MDNS extends EventTarget {
 
   private async handleSocketError(e: any, socket: dgram.Socket) {
     throw new errors.ErrorMDNSSocket(
-      `An error occurred on a socket that MDNS has bound to ${socket.address().address}`,
+      `An error occurred on a socket that MDNS has bound to ${
+        socket.address().address
+      }`,
       {
-        cause: e
-      }
-    )
+        cause: e,
+      },
+    );
   }
 
   // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
@@ -841,13 +893,28 @@ class MDNS extends EventTarget {
     }
 
     // Send the goodbye packet
-    const serviceResourceRecords = utils.toServiceResourceRecords([...this.localServices.values()], this._hostname, false, 0);
+    const serviceResourceRecords = utils.toServiceResourceRecords(
+      [...this.localServices.values()],
+      this._hostname,
+      false,
+      0,
+    );
     const goodbyePacketPromises = this.sockets.flatMap((socket) => {
       const socketInfo = this.socketMap.get(socket);
       if (socketInfo == null || socketInfo.unicast) return [];
-      const hostRowIs = this.socketHostTable.whereRows(["networkInterfaceName"], [socketInfo?.networkInterfaceName]);
-      const addresses =  hostRowIs.flatMap((rowI) => this.socketHostTable.getRow(rowI)?.address ?? []) as Host[];
-      const hostResourceRecords = utils.toHostResourceRecords(addresses, this._hostname, true, 0);
+      const hostRowIs = this.socketHostTable.whereRows(
+        ['networkInterfaceName'],
+        [socketInfo?.networkInterfaceName],
+      );
+      const addresses = hostRowIs.flatMap(
+        (rowI) => this.socketHostTable.getRow(rowI)?.address ?? [],
+      ) as Host[];
+      const hostResourceRecords = utils.toHostResourceRecords(
+        addresses,
+        this._hostname,
+        true,
+        0,
+      );
       const advertisePacket: Packet = {
         id: 0,
         flags: {
@@ -1011,7 +1078,7 @@ class MDNS extends EventTarget {
       const rejectP = () => {
         this.queries.delete(serviceDomain);
         reject();
-      }
+      };
       await this.sendPacket(queryPacket).catch(rejectP);
       const setTimer = () => {
         timer = new Timer(() => {

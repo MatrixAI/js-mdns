@@ -2,7 +2,6 @@ import type { MDNSServiceEvent, MDNSServiceRemovedEvent } from '@/events';
 import type { Hostname, Port } from '@/types';
 import MDNS from '@/MDNS';
 
-
 describe(MDNS.name, () => {
   let mdns1: MDNS;
   let mdns2: MDNS;
@@ -24,10 +23,10 @@ describe(MDNS.name, () => {
     const service = {
       name: 'test',
       port: mdnsPort,
-      protocol: "udp",
+      protocol: 'udp',
       type: 'polykey',
     } as Parameters<typeof MDNS.prototype.registerService>[0];
-    mdns2.registerService(service)
+    mdns2.registerService(service);
     await new Promise((resolve, reject) => {
       mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
         try {
@@ -37,8 +36,7 @@ describe(MDNS.name, () => {
           expect(e.detail.type).toBe(service.type);
           expect(e.detail.hostname).toBe(mdns2Hostname + '.local');
           resolve(null);
-        }
-        catch (e) {
+        } catch (e) {
           reject(e);
         }
       });
@@ -48,8 +46,16 @@ describe(MDNS.name, () => {
     const mdnsPort = 1234 as Port;
     const mdns1Hostname = 'polykey1' as Hostname;
     const mdns2Hostname = 'polykey2' as Hostname;
-    await mdns1.start({ hostname: mdns1Hostname, port: mdnsPort, advertise: false });
-    await mdns2.start({ hostname: mdns2Hostname, port: mdnsPort, advertise: false });
+    await mdns1.start({
+      hostname: mdns1Hostname,
+      port: mdnsPort,
+      advertise: false,
+    });
+    await mdns2.start({
+      hostname: mdns2Hostname,
+      port: mdnsPort,
+      advertise: false,
+    });
     const service = {
       name: 'test',
       port: mdnsPort,
@@ -68,8 +74,7 @@ describe(MDNS.name, () => {
           expect(e.detail.type).toBe(service.type);
           expect(e.detail.hostname).toBe(mdns2Hostname + '.local');
           resolve(null);
-        }
-        catch (e) {
+        } catch (e) {
           reject(e);
         }
       });

@@ -57,7 +57,7 @@ class ResourceRecordCache extends EventTarget {
   } = {}) {
     return new this({
       max,
-      timerDisabled
+      timerDisabled,
     });
   }
 
@@ -213,9 +213,7 @@ class ResourceRecordCache extends EventTarget {
   }
 
   @ready(new errors.ErrorCacheDestroyed())
-  public get(
-    rowIs: number[]
-  ): CachableResourceRecord[] {
+  public get(rowIs: number[]): CachableResourceRecord[] {
     const resourceRecords: CachableResourceRecord[] = [];
     for (const rowI of rowIs) {
       const row = this.resourceRecordCache.getRow(rowI);

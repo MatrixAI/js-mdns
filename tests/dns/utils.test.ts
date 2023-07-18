@@ -22,7 +22,17 @@ import {
   RCode,
   RType,
 } from '@/dns';
-import { aaaaRecordArb, aRecordArb, cnamePtrRecordArb, packetArb, packetFlagsArb, packetOpCodeArb, questionRecordArb, srvRecordArb, txtRecordArb } from './utils';
+import {
+  aaaaRecordArb,
+  aRecordArb,
+  cnamePtrRecordArb,
+  packetArb,
+  packetFlagsArb,
+  packetOpCodeArb,
+  questionRecordArb,
+  srvRecordArb,
+  txtRecordArb,
+} from './utils';
 
 describe('/dns/utils.ts', () => {
   testProp('labels', [fc.domain()], (domain) => {
@@ -86,17 +96,11 @@ describe('/dns/utils.ts', () => {
     );
     expect(parsedQuestions.data).toEqual(questions);
   });
-  testProp(
-    'packet flags',
-    [
-      packetFlagsArb,
-    ],
-    (flags) => {
-      const encodedFlags = generatePacketFlags(flags);
-      const decodedFlags = parsePacketFlags(encodedFlags);
-      expect(decodedFlags.data).toEqual(flags);
-    },
-  );
+  testProp('packet flags', [packetFlagsArb], (flags) => {
+    const encodedFlags = generatePacketFlags(flags);
+    const decodedFlags = parsePacketFlags(encodedFlags);
+    expect(decodedFlags.data).toEqual(flags);
+  });
   testProp('resource records a', [fc.array(aRecordArb)], (resourceRecords) => {
     const generatedResourceRecords = generateResourceRecords(
       resourceRecords as any,
@@ -168,13 +172,9 @@ describe('/dns/utils.ts', () => {
       expect(parsedResourceRecords.data).toEqual(resourceRecords);
     },
   );
-  testProp(
-    'packet',
-    [packetArb],
-    (packet) => {
-      const generatedPacket = generatePacket(packet as any);
-      const parsedPacket = parsePacket(generatedPacket);
-      expect(parsedPacket).toEqual(packet);
-    },
-  );
+  testProp('packet', [packetArb], (packet) => {
+    const generatedPacket = generatePacket(packet as any);
+    const parsedPacket = parsePacket(generatedPacket);
+    expect(parsedPacket).toEqual(packet);
+  });
 });

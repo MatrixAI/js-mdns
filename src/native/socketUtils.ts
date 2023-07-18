@@ -1,5 +1,5 @@
-import nodeGypBuild from 'node-gyp-build';
 import path from 'path';
+import nodeGypBuild from 'node-gyp-build';
 
 interface SocketUtils {
   disableSocketMulticastAll(socketfd: number): boolean;

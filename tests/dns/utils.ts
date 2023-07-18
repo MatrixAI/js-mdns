@@ -1,6 +1,14 @@
-import { generateIPv6, parseIPv6 } from "@/dns";
-import { PacketOpCode, PacketType, QClass, QType, RClass, RCode, RType } from "@/dns/types";
-import { fc } from "@fast-check/jest";
+import { fc } from '@fast-check/jest';
+import { generateIPv6, parseIPv6 } from '@/dns';
+import {
+  PacketOpCode,
+  PacketType,
+  QClass,
+  QType,
+  RClass,
+  RCode,
+  RType,
+} from '@/dns/types';
 
 const uint32Arb = fc.integer({ min: 0, max: 4294967295 }); // 32-Bit Unsigned Integer Limits
 const uint16Arb = fc.integer({ min: 0, max: 65535 }); // 16-Bit Unsigned Integer Limits
@@ -131,5 +139,5 @@ export {
   srvRecordArb,
   resourceRecordArb,
   packetFlagsArb,
-  packetArb
-}
+  packetArb,
+};

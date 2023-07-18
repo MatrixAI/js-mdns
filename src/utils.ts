@@ -13,11 +13,11 @@ import type {
   QType,
   CachableResourceRecord,
 } from '@/dns';
+import type dgram from 'dgram';
 import dns from 'dns';
 import os from 'os';
 import { IPv4, IPv6, Validator } from 'ip-num';
 import { RType, RClass, SRVRecord, TXTRecord, QClass } from '@/dns';
-import dgram from 'dgram';
 
 /**
  * Is it an IPv4 address?
@@ -387,7 +387,11 @@ function toServiceResourceRecords(
   });
 }
 
-async function bindSocket(socket: dgram.Socket, port: number, address?: string): Promise<{ send: any, close: any }> {
+async function bindSocket(
+  socket: dgram.Socket,
+  port: number,
+  address?: string,
+): Promise<{ send: any; close: any }> {
   const socketBind = promisify(socket.bind).bind(socket);
   const socketClose = promisify(socket.close).bind(socket);
   const socketSend = promisify(socket.send).bind(socket);
@@ -421,5 +425,5 @@ export {
   toHostResourceRecords,
   isService,
   toServiceResourceRecords,
-  bindSocket
+  bindSocket,
 };

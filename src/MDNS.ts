@@ -36,12 +36,6 @@ import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 import { socketUtils } from './native';
 
-const MDNS_TTL = 255;
-
-// RFC 6762 10. TTLs of various records
-const HOSTNAME_RR_TTL = 120;
-const OTHER_RR_TTL = 4500;
-
 interface MDNS extends StartStop {}
 @StartStop()
 class MDNS extends EventTarget {
@@ -173,6 +167,8 @@ class MDNS extends EventTarget {
 
     const sockets: Array<dgram.Socket> = [];
 
+    const multicastTTL = 255;
+
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
       reuseAddr: false,
@@ -209,6 +205,7 @@ class MDNS extends EventTarget {
           udpType: 'udp6',
           unicast: true
         });
+        unicastSocket.setTTL(multicastTTL);
         unicastSocket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, unicastSocket),
         );
@@ -315,8 +312,8 @@ class MDNS extends EventTarget {
           socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
           socket.setMulticastInterface(linkLocalSocketHost);
           socket.addMembership(linkLocalGroup, linkLocalSocketHost);
-          socket.setMulticastTTL(MDNS_TTL);
-          socket.setTTL(MDNS_TTL);
+          socket.setMulticastTTL(multicastTTL);
+          socket.setTTL(multicastTTL);
           socket.setMulticastLoopback(true);
         } catch (e) {
           for (const socket of sockets.reverse()) {

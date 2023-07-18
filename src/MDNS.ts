@@ -80,6 +80,7 @@ class MDNS extends EventTarget {
           parsedAddress: IPv6;
           parsedMask: IPv6Mask;
           family: 'IPv6';
+          scopeid: number;
         }
     )
   > = new Table(
@@ -264,7 +265,7 @@ class MDNS extends EventTarget {
           ]);
         }
         try {
-          if (family === 'IPv4') {
+          if (networkAddress.family === 'IPv4') {
             this.socketHostTable.insertRow({
               ...networkAddress,
               family: 'IPv4',
@@ -279,6 +280,7 @@ class MDNS extends EventTarget {
               networkInterfaceName,
               parsedAddress: IPv6.fromString(address),
               parsedMask: new IPv6Mask(netmask),
+              scopeid: networkAddress.scopeid as number
             });
           }
         } catch (err) {
@@ -515,7 +517,7 @@ class MDNS extends EventTarget {
           const mask = address.parsedMask;
           const localAddress = address.parsedAddress;
           let remoteAddress: IPv4 | IPv6;
-          let remoteNetworkInterfaceName: string | undefined;
+          let remoteNetworkInterfaceIndex: string | undefined;
           if (address.family === 'IPv4') {
             remoteAddress = IPv4.fromString(rinfo.address);
             if (
@@ -528,7 +530,7 @@ class MDNS extends EventTarget {
             const [remoteAddress_, remoteNetworkInterfaceName_] =
               rinfo.address.split('%', 2);
             remoteAddress = IPv6.fromString(remoteAddress_);
-            remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
+            remoteNetworkInterfaceIndex = remoteNetworkInterfaceName_;
           }
           if (
             (mask.value & remoteAddress.value) !==
@@ -536,8 +538,11 @@ class MDNS extends EventTarget {
           ) {
             return;
           } else if (
-            remoteNetworkInterfaceName != null &&
-            remoteNetworkInterfaceName !== address.networkInterfaceName
+            remoteNetworkInterfaceIndex != null &&
+            (
+              remoteNetworkInterfaceIndex !== address.networkInterfaceName
+              || parseInt(remoteNetworkInterfaceIndex) !== (address as any).scopeid
+            )
           ) {
             return;
           }

@@ -80,6 +80,7 @@ class MDNS extends EventTarget {
           parsedAddress: IPv6;
           parsedMask: IPv6Mask;
           family: 'IPv6';
+          scopeid: number;
         }
     )
   > = new Table(
@@ -168,7 +169,7 @@ class MDNS extends EventTarget {
     }
 
     const sockets: Array<dgram.Socket> = [];
-
+    const platform = utils.getPlatform();
     const multicastTTL = 255;
 
     let unicastSocket = dgram.createSocket({
@@ -202,9 +203,11 @@ class MDNS extends EventTarget {
           '::',
         );
         unicastSocketClose = close;
-        socketUtils.disableSocketMulticastAll(
-          (unicastSocket as any)._handle.fd,
-        );
+        if (platform === 'linux') {
+          socketUtils.disableSocketMulticastAll(
+            (unicastSocket as any)._handle.fd,
+          );
+        }
         sockets.push(unicastSocket);
         this.socketMap.set(unicastSocket, {
           close,
@@ -231,7 +234,7 @@ class MDNS extends EventTarget {
 
     this.logger.info(`Start ${this.constructor.name}`);
 
-    const socketHosts: Array<[Host, 'udp4' | 'udp6', string]> = [];
+    const socketHosts: Array<[Host, 'udp4' | 'udp6', string, number?]> = [];
     // When binding to wild card
     // We explicitly find out all the interfaces we are going to bind to
     // This is because we only want to respond on the interface where we received
@@ -246,19 +249,25 @@ class MDNS extends EventTarget {
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
         if (networkAddress.internal) continue;
-        const { address, family, netmask } = networkAddress;
+        const { address, family, netmask, scopeid } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
-          socketHosts.push([address as Host, 'udp6', networkInterfaceName]);
+          socketHosts.push([
+            address as Host,
+            'udp6',
+            networkInterfaceName,
+            scopeid,
+          ]);
         } else {
           socketHosts.push([
             address as Host,
             family === 'IPv4' ? 'udp4' : 'udp6',
             networkInterfaceName,
+            scopeid,
           ]);
         }
         try {
-          if (family === 'IPv4') {
+          if (networkAddress.family === 'IPv4') {
             this.socketHostTable.insertRow({
               ...networkAddress,
               family: 'IPv4',
@@ -273,6 +282,7 @@ class MDNS extends EventTarget {
               networkInterfaceName,
               parsedAddress: IPv6.fromString(address),
               parsedMask: new IPv6Mask(netmask),
+              scopeid: networkAddress.scopeid as number,
             });
           }
         } catch (err) {
@@ -292,19 +302,22 @@ class MDNS extends EventTarget {
     // Here we create multiple sockets
     // This may only contain 1
     // or we end up with multiple sockets we are working with
-    for (const [socketHost, udpType, networkInterfaceName] of [
+    for (const [socketHost, udpType, networkInterfaceName, scopeid] of [
       ...socketHosts,
     ]) {
+      const linkLocalInterfaceIndex =
+        platform !== 'win32' ? networkInterfaceName : scopeid;
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
-          ? ((socketHost + '%' + networkInterfaceName) as Host)
+          ? ((socketHost + '%' + linkLocalInterfaceIndex) as Host)
           : socketHost;
+
       for (const group of [...groups]) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
         if (utils.isIPv6(group) && udpType !== 'udp6') continue;
         const linkLocalGroup =
           udpType === 'udp6' && group.startsWith('ff02')
-            ? ((group + '%' + networkInterfaceName) as Host)
+            ? ((group + '%' + linkLocalInterfaceIndex) as Host)
             : group;
         const socket = dgram.createSocket({
           type: udpType,
@@ -316,10 +329,15 @@ class MDNS extends EventTarget {
         const socketSend = utils.promisify(socket.send).bind(socket);
         const { p: errorP, rejectP: rejectErrorP } = utils.promise();
         socket.once('error', rejectErrorP);
-        const socketBindP = socketBind(port, linkLocalGroup);
+        const socketBindP = socketBind(
+          port,
+          platform !== 'win32' ? linkLocalSocketHost : undefined,
+        );
         try {
           await Promise.race([socketBindP, errorP]);
-          socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
+          if (platform === 'linux') {
+            socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
+          }
           socket.setMulticastInterface(linkLocalSocketHost);
           socket.addMembership(linkLocalGroup, linkLocalSocketHost);
           socket.setMulticastTTL(multicastTTL);
@@ -327,7 +345,7 @@ class MDNS extends EventTarget {
           socket.setMulticastLoopback(true);
         } catch (e) {
           for (const socket of sockets.reverse()) {
-            await socket.close();
+            socket.close();
           }
           // TODO: edit comment
           // Possible binding failure due to EINVAL or ENOTFOUND.
@@ -508,7 +526,7 @@ class MDNS extends EventTarget {
           const mask = address.parsedMask;
           const localAddress = address.parsedAddress;
           let remoteAddress: IPv4 | IPv6;
-          let remoteNetworkInterfaceName: string | undefined;
+          let remoteNetworkInterfaceIndex: string | undefined;
           if (address.family === 'IPv4') {
             remoteAddress = IPv4.fromString(rinfo.address);
             if (
@@ -521,7 +539,7 @@ class MDNS extends EventTarget {
             const [remoteAddress_, remoteNetworkInterfaceName_] =
               rinfo.address.split('%', 2);
             remoteAddress = IPv6.fromString(remoteAddress_);
-            remoteNetworkInterfaceName = remoteNetworkInterfaceName_;
+            remoteNetworkInterfaceIndex = remoteNetworkInterfaceName_;
           }
           if (
             (mask.value & remoteAddress.value) !==
@@ -529,8 +547,10 @@ class MDNS extends EventTarget {
           ) {
             return;
           } else if (
-            remoteNetworkInterfaceName != null &&
-            remoteNetworkInterfaceName !== address.networkInterfaceName
+            remoteNetworkInterfaceIndex != null &&
+            (remoteNetworkInterfaceIndex !== address.networkInterfaceName ||
+              parseInt(remoteNetworkInterfaceIndex) !==
+                (address as any).scopeid)
           ) {
             return;
           }
@@ -932,10 +952,10 @@ class MDNS extends EventTarget {
     await Promise.all(goodbyePacketPromises);
 
     // Clear Services and Cache
-    this.localRecordCache.destroy();
+    await this.localRecordCache.destroy();
     this.localRecordCacheDirty = true;
     this.localServices.clear();
-    this.networkRecordCache.destroy();
+    await this.networkRecordCache.destroy();
     this.networkServices.clear();
 
     // Close all Sockets

@@ -339,7 +339,7 @@ class MDNS extends EventTarget {
         socket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, socket),
         );
-        socket.addListener('error', (...p) => this.handleSocketError(...p));
+        socket.addListener('error', (err) => this.handleSocketError(err, socket));
 
         this.socketMap.set(socket, {
           close: socketClose,

@@ -184,7 +184,7 @@ class MDNS extends EventTarget {
       unicastSocketClose = (await utils.bindSocket(unicastSocket, port, '::')).close;
       this._unicast = true;
     }
-    catch (err) {
+    catch (e) {
       this._unicast = false;
     }
     finally {
@@ -212,9 +212,10 @@ class MDNS extends EventTarget {
         unicastSocket.addListener('message', (msg, rinfo) =>
           this.handleSocketMessage(msg, rinfo, unicastSocket),
         );
+        unicastSocket.addListener('error', (err) => this.handleSocketError(err));
       }
-      catch (err) {
-        console.log("Error binding unicast socket");
+      catch (e) {
+        this._unicast = false;
       }
     }
 
@@ -327,7 +328,7 @@ class MDNS extends EventTarget {
           // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
           // or doesn't resolve to IPv4 if udp4 is specified.
           throw new errors.ErrorMDNSInvalidBindAddress(
-            'Could not bind socket',
+            `Could not bind socket to ${linkLocalGroup}`,
             {
               cause: e,
             },
@@ -453,7 +454,6 @@ class MDNS extends EventTarget {
         await socketInfo?.send(message, this._port, sendAddress);
       }
       catch(e) {
-        console.log(socketInfo, sendAddress, e);
         throw new errors.ErrorMDNSInvalidSendAddress(
           `Could not send packet to ${sendAddress}`,
           {
@@ -470,7 +470,6 @@ class MDNS extends EventTarget {
     socket: dgram.Socket,
   ) {
     const socketInfo = this.socketMap.get(socket);
-
     if (!socketInfo?.unicast) {
       // We check if the received message is from the same subnet in order to determine if we should respond.
       try {
@@ -822,10 +821,10 @@ class MDNS extends EventTarget {
     return relatedFdqns;
   }
 
-  private async handleSocketError(e: any) {
+  private async handleSocketError(e: any, socket: dgram.Socket) {
     // TODO: Dealing with socket errors, look at QUIC for inspiration
     throw new errors.ErrorMDNSSocket(
-      'An error occured on a socket that MDNS has bound to...',
+      `An error occurred on a socket that MDNS has bound to ${socket.address().address}`,
       {
         cause: e
       }

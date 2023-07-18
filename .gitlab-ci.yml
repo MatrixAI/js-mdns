@@ -138,6 +138,9 @@ build:dist:
 build:linux:
   stage: build
   needs: []
+  variables:
+    # Only x64 architecture is needed
+    npm_config_arch: "x64"
   script:
     - >
       nix-shell --arg ci true --run $'
@@ -163,6 +166,11 @@ build:windows:
   needs: []
   tags:
     - windows
+  variables:
+    # Location node-gyp installed headers and static libraries
+    npm_config_devdir: "${CI_PROJECT_DIR}/tmp/node-gyp"
+    # Only x64 architecture is needed
+    npm_config_arch: "x64"
   before_script:
     - mkdir -Force "$CI_PROJECT_DIR/tmp"
   script:
@@ -191,6 +199,11 @@ build:macos:
   needs: []
   tags:
     - saas-macos-medium-m1
+  variables:
+    # Location node-gyp installed headers and static libraries
+    npm_config_devdir: "${CI_PROJECT_DIR}/tmp/node-gyp"
+    # Produce universal binary
+    npm_config_arch: 'x64+arm64'
   image: macos-12-xcode-14
   script:
     - eval "$(brew shellenv)"

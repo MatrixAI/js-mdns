@@ -499,6 +499,7 @@ class MDNS extends EventTarget {
       try {
         await socketInfo?.send(message, this._port, sendAddress);
       } catch (e) {
+        if (e.code === "ECANCELED") return;
         throw new errors.ErrorMDNSSocketInvalidSendAddress(
           `Could not send packet to ${sendAddress}`,
           {

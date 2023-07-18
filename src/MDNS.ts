@@ -158,16 +158,13 @@ class MDNS extends EventTarget {
     ipv6Only = false,
     groups = ['224.0.0.251', 'ff02::fb'] as Array<Host>,
     hostname = utils.getHostname(),
-    reuseAddr = true,
     advertise = true,
   }: {
-    host?: Host | Hostname;
     port?: Port;
     ipv6Only?: boolean;
 
     groups?: Array<Host>;
     hostname?: string;
-    reuseAddr?: boolean;
     advertise?: boolean;
   }): Promise<void> {
     if (groups.length < 1) {
@@ -293,7 +290,7 @@ class MDNS extends EventTarget {
     ]) {
       const linkLocalSocketHost =
         udpType === 'udp6' && socketHost.startsWith('fe80')
-          ? ((socketHost + '%' + networkInterfaceName) as Host)
+          ? (socketHost + '%' + networkInterfaceName as Host)
           : socketHost;
       for (const group of [...groups]) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
@@ -304,7 +301,7 @@ class MDNS extends EventTarget {
             : group;
         const socket = dgram.createSocket({
           type: udpType,
-          reuseAddr,
+          reuseAddr: true,
           ipv6Only,
         });
         const socketBind = utils.promisify(socket.bind).bind(socket);

@@ -431,8 +431,12 @@ class MDNS extends EventTarget {
    */
   private async sendPacket(packet: Packet, socket?: dgram.Socket, address?: Host) {
     const message = generatePacket(packet);
-    let sockets = this.sockets.filter((s) => this.socketMap.get(s)?.unicast !== true);
-    if (socket != null) sockets = [socket];
+    let sockets: dgram.Socket[];
+    if (socket == null) {
+      sockets = this.sockets.filter((s) => this.socketMap.get(s)?.unicast !== true);
+    } else {
+      sockets = [socket];
+    }
     for (const socket of sockets) {
       const socketInfo = this.socketMap.get(socket);
       let sendAddress: Host | undefined;

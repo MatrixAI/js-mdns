@@ -466,7 +466,7 @@ function parseResourceRecord(
     }
   } else if (type === RType.TXT) {
     parser = () => parseTXTRecordData(inputBuffer, rdlength);
-  } else if (type == RType.SRV) {
+  } else if (type === RType.SRV) {
     parser = () => parseSRVRecordData(inputBuffer, original, rdlength);
   } else {
     parser = () => ({ data: '', remainder: inputBuffer.subarray(rdlength) });

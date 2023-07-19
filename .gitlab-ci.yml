@@ -36,6 +36,8 @@ cache:
     - ./tmp/chocolatey/
     # `jest` cache is configured in jest.config.js
     - ./tmp/jest/
+     # `npm_config_devdir` cache for `node-gyp` headers and libraries used by windows and macos
+    - ./tmp/node-gyp
 
 stages:
   - check       # Linting, unit tests
@@ -69,6 +71,7 @@ check:test:
   script:
     - >
       nix-shell --arg ci true --run $'
+      npm run prebuild --verbose;
       npm test -- --ci --coverage;
       '
   artifacts:
@@ -79,6 +82,8 @@ check:test:
       coverage_report:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
+    paths:
+      - ./prebuilds/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on feature commits and ignores version commits
@@ -136,9 +141,13 @@ build:dist:
 build:linux:
   stage: build
   needs: []
+  variables:
+    # Only x64 architecture is needed
+    npm_config_arch: "x64"
   script:
     - >
       nix-shell --arg ci true --run $'
+      npm run prebuild --verbose;
       npm test -- --ci --coverage;
       '
   artifacts:
@@ -161,6 +170,11 @@ build:windows:
   needs: []
   tags:
     - windows
+  variables:
+    # Location node-gyp installed headers and static libraries
+    npm_config_devdir: "${CI_PROJECT_DIR}/tmp/node-gyp"
+    # Only x64 architecture is needed
+    npm_config_arch: "x64"
   before_script:
     - mkdir -Force "$CI_PROJECT_DIR/tmp"
   script:
@@ -168,6 +182,7 @@ build:windows:
     - refreshenv
     - npm install --ignore-scripts
     - $env:Path = "$(npm root)\.bin;" + $env:Path
+    - npm run prebuild --verbose;
     - npm test -- --ci --coverage
   artifacts:
     when: always
@@ -177,6 +192,8 @@ build:windows:
       coverage_report:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
+    paths:
+      - ./prebuilds/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on staging commits and ignores version commits
@@ -189,6 +206,11 @@ build:macos:
   needs: []
   tags:
     - saas-macos-medium-m1
+  variables:
+    # Location node-gyp installed headers and static libraries
+    npm_config_devdir: "${CI_PROJECT_DIR}/tmp/node-gyp"
+    # Produce universal binary
+    npm_config_arch: 'x64+arm64'
   image: macos-12-xcode-14
   script:
     - eval "$(brew shellenv)"
@@ -228,6 +250,15 @@ build:prerelease:
       nix-shell --arg ci true --run $'
       npm publish --tag prerelease --access public;
       '
+    - >
+      for d in prebuilds/*; do
+        tar \
+          --create \
+          --verbose \
+          --file="prebuilds/$(basename $d).tar" \
+          --directory=prebuilds \
+          "$(basename $d)";
+      done
   after_script:
     - rm -f ./.npmrc
   rules:
@@ -291,6 +322,15 @@ release:distribution:
       nix-shell --arg ci true --run $'
       npm publish --access public;
       '
+    - >
+      for d in prebuilds/*; do
+        tar \
+          --create \
+          --verbose \
+          --file="prebuilds/$(basename $d).tar" \
+          --directory=prebuilds \
+          "$(basename $d)";
+      done
   after_script:
     - rm -f ./.npmrc
   rules:

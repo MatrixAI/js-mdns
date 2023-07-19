@@ -443,25 +443,23 @@ class MDNS extends EventTarget {
       advertisement.cancel();
     }
 
-    const abortController = new AbortController();
-    let timer: Timer | undefined;
-
-    abortController.signal.addEventListener('abort', () => {
-      timer?.cancel();
-      this.advertisements.delete(advertisementKey);
-    });
-
-    const promise = new PromiseCancellable<void>(async (resolve, reject) => {
-      const rejectP = () => {
-        this.advertisements.delete(advertisementKey);
-        reject();
-      };
-      await this.sendPacket(packet, socket).catch(rejectP);
-      timer = new Timer(async () => {
-        await this.sendPacket(packet, socket).catch(rejectP);
-        resolve();
-      }, 1000);
-    }, abortController);
+    const promise = new PromiseCancellable<void>(
+      async (resolve, reject, signal) => {
+        const rejectFn = (reason: any) => {
+          this.advertisements.delete(advertisementKey);
+          reject(reason);
+        };
+        const timer = new Timer(async () => {
+          await this.sendPacket(packet, socket).catch(rejectFn);
+          resolve();
+        }, 1000);
+        signal.addEventListener('abort', () => {
+          timer.cancel('abort');
+          this.advertisements.delete(advertisementKey);
+        });
+        await this.sendPacket(packet, socket).catch(rejectFn);
+      },
+    );
 
     this.advertisements.set(advertisementKey, promise);
   }
@@ -1088,6 +1086,10 @@ class MDNS extends EventTarget {
 
     const promise = new PromiseCancellable<void>(
       async (_resolve, reject, signal) => {
+        const rejectFn = (reason: any) => {
+          this.queries.delete(serviceDomain);
+          reject(reason);
+        };
         let delayMilis = minDelay * 1000;
         const maxDelayMilis = maxDelay * 1000;
 
@@ -1095,7 +1097,7 @@ class MDNS extends EventTarget {
 
         const setTimer = () => {
           timer = new Timer(async () => {
-            await this.sendPacket(queryPacket).catch(reject);
+            await this.sendPacket(queryPacket).catch(rejectFn);
             setTimer();
           }, delayMilis);
           delayMilis *= 2;
@@ -1108,7 +1110,7 @@ class MDNS extends EventTarget {
           this.queries.delete(serviceDomain);
         });
 
-        await this.sendPacket(queryPacket).catch(reject);
+        await this.sendPacket(queryPacket).catch(rejectFn);
       },
     );
 

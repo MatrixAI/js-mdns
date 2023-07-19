@@ -34,7 +34,6 @@ interface MDNS extends StartStop {}
 @StartStop()
 class MDNS extends EventTarget {
   protected logger: Logger;
-  protected resolveHostname: (hostname: Hostname) => Host | PromiseLike<Host>;
   protected getNetworkInterfaces: () =>
     | NetworkInterfaces
     | PromiseLike<NetworkInterfaces>;
@@ -97,11 +96,9 @@ class MDNS extends EventTarget {
   protected advertisements: Map<string, PromiseCancellable<void>> = new Map();
 
   public constructor({
-    resolveHostname = utils.resolveHostname,
     getNetworkInterfaces = utils.getNetworkInterfaces,
     logger,
   }: {
-    resolveHostname?: (hostname: Hostname) => Host | PromiseLike<Host>;
     getNetworkInterfaces?: () =>
       | NetworkInterfaces
       | PromiseLike<NetworkInterfaces>;
@@ -109,7 +106,6 @@ class MDNS extends EventTarget {
   } = {}) {
     super();
     this.logger = logger ?? new Logger(this.constructor.name);
-    this.resolveHostname = resolveHostname;
     this.getNetworkInterfaces = getNetworkInterfaces;
   }
 
@@ -333,7 +329,7 @@ class MDNS extends EventTarget {
         socket.once('error', rejectErrorP);
         const socketBindP = socketBind(
           port,
-          platform !== 'win32' ? linkLocalSocketHost : undefined,
+          platform === 'linux' ? linkLocalGroup : undefined,
         );
         try {
           await Promise.race([socketBindP, errorP]);
@@ -561,11 +557,12 @@ class MDNS extends EventTarget {
       }
     }
 
-    let packet: Packet | undefined;
+    let packet: Packet;
     try {
       packet = parsePacket(msg);
-    } catch (err) {}
-    if (packet == null) return;
+    } catch (err) {
+      return;
+    }
     if (packet.flags.type === PacketType.QUERY) {
       await this.handleSocketMessageQuery(packet, rinfo, socket);
     } else {

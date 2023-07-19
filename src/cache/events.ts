@@ -1,4 +1,4 @@
-import type { CachableResourceRecord, ResourceRecord } from '@/dns';
+import type { CachableResourceRecord } from '@/dns';
 
 class MDNSCacheExpiredEvent extends Event {
   public detail: CachableResourceRecord;

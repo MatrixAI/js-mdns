@@ -6,18 +6,12 @@ import type {
   PromiseDeconstructed,
   Service,
 } from './types';
-import type {
-  StringRecord,
-  ResourceRecord,
-  QuestionRecord,
-  QType,
-  CachableResourceRecord,
-} from '@/dns';
+import type { StringRecord, ResourceRecord } from '@/dns';
 import type dgram from 'dgram';
 import dns from 'dns';
 import os from 'os';
 import { IPv4, IPv6, Validator } from 'ip-num';
-import { RType, RClass, SRVRecord, TXTRecord, QClass } from '@/dns';
+import { RType, RClass } from '@/dns';
 
 /**
  * Is it an IPv4 address?

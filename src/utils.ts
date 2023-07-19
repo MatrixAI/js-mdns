@@ -408,6 +408,13 @@ async function bindSocket(
   return { send: socketSend, close: socketClose };
 }
 
+/**
+ * Returns a random unique unsigned 16 bit integer.
+ */
+function getRandomPacketId(): number {
+  return Math.floor(Math.random() * 65535);
+}
+
 export {
   isIPv4,
   isIPv6,
@@ -433,4 +440,5 @@ export {
   isService,
   toServiceResourceRecords,
   bindSocket,
+  getRandomPacketId,
 };

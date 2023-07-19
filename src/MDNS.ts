@@ -91,6 +91,7 @@ class MDNS extends EventTarget {
   protected _groups: Array<Host>;
   protected _hostname: Hostname;
   protected _unicast: boolean = false;
+  protected _id: number = 0;
 
   protected queries: Map<string, PromiseCancellable<void>> = new Map();
   protected advertisements: Map<string, PromiseCancellable<void>> = new Map();
@@ -129,7 +130,7 @@ class MDNS extends EventTarget {
   }
 
   /**
-   * Gets the multicast groups this socket is bound to.
+   * Gets the multicast groups MDNS is bound to.
    * There will always be at least 1 value.
    */
   @ready(new errors.ErrorMDNSNotRunning())
@@ -138,13 +139,32 @@ class MDNS extends EventTarget {
   }
 
   /**
+   * Gets the multicast hostname this socket is bound to.
+   * This will always end in `.local`.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get hostname(): string {
+    return this._hostname;
+  }
+
+  /**
+   * Gets the unicast flag.
+   * This will be true if a socket is deemed able to receive unicast responses.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get unicast(): string {
+    return this._hostname;
+  }
+
+  /**
    * Starts MDNS
    * @param opts
-   * @param opts.host - The host to bind to. Defaults to `::` for dual stack.
-   * @param opts.port - The port to bind to. Defaults to 5353 the default MDNS port.
-   * @param opts.group - The multicast group IP addresses to multi-cast on. This can have both IPv4 and IPv6.
+   * @param opts.port - The port to bind to. Defaults to 5353 the default MDNS port. Defaults to 5353.
+   * @param opts.ipv6Only - Makes MDNS to bind exclusively IPv6 sockets. Defaults to false.
+   * @param opts.groups - The multicast group IP addresses to multi-cast on. This can have both IPv4 and IPv6. Defaults to `['224.0.0.251', 'ff02::fb']`.
    * @param opts.hostname - The hostname to use for the MDNS stack. Defaults to the OS hostname.
-   * @param opts.reuseAddr - Allows MDNS to bind on the same port that an existing MDNS stack is already bound on. Defaults to true.
+   * @param opts.advertise - Allows MDNS to advertise it's hostnames. Defaults to true.
+   * @param opts.id - The unique unsigned 16 bit integer ID used for all outgoing MDNS packets. Defaults to a random number.
    */
   public async start({
     port = 5353 as Port,
@@ -152,6 +172,7 @@ class MDNS extends EventTarget {
     groups = ['224.0.0.251', 'ff02::fb'] as Array<Host>,
     hostname = utils.getHostname(),
     advertise = true,
+    id = utils.getRandomPacketId(),
   }: {
     port?: Port;
     ipv6Only?: boolean;
@@ -159,6 +180,7 @@ class MDNS extends EventTarget {
     groups?: Array<Host>;
     hostname?: string;
     advertise?: boolean;
+    id?: number;
   }): Promise<void> {
     if (groups.length < 1) {
       throw new RangeError('Must have at least 1 multicast group');
@@ -167,6 +189,8 @@ class MDNS extends EventTarget {
     const sockets: Array<dgram.Socket> = [];
     const platform = utils.getPlatform();
     const multicastTTL = 255;
+
+    let unicast = false;
 
     let unicastSocket = dgram.createSocket({
       type: 'udp6',
@@ -177,16 +201,16 @@ class MDNS extends EventTarget {
     try {
       unicastSocketClose = (await utils.bindSocket(unicastSocket, port, '::'))
         .close;
-      this._unicast = true;
+      unicast = true;
     } catch (e) {
-      this._unicast = false;
+      unicast = false;
     } finally {
       if (unicastSocketClose != null) {
         await unicastSocketClose();
       }
     }
 
-    if (this._unicast) {
+    if (unicast) {
       unicastSocket = dgram.createSocket({
         type: 'udp6',
         reuseAddr: true,
@@ -222,7 +246,7 @@ class MDNS extends EventTarget {
         );
       } catch (e) {
         await unicastSocketClose();
-        this._unicast = false;
+        unicast = false;
       }
     }
 
@@ -382,6 +406,8 @@ class MDNS extends EventTarget {
     this._port = port;
     this._groups = groups;
     this._hostname = hostname as Hostname;
+    this._unicast = unicast;
+    this._id = id;
     this.localRecordCache = await ResourceRecordCache.createResourceRecordCache(
       { timerDisabled: true },
     );
@@ -410,7 +436,7 @@ class MDNS extends EventTarget {
         this._hostname,
       );
       const advertisePacket: Packet = {
-        id: 0,
+        id: this._id,
         flags: {
           opcode: PacketOpCode.QUERY,
           rcode: RCode.NoError,
@@ -563,6 +589,7 @@ class MDNS extends EventTarget {
     } catch (err) {
       return;
     }
+    if (packet.id === this._id) return;
     if (packet.flags.type === PacketType.QUERY) {
       await this.handleSocketMessageQuery(packet, rinfo, socket);
     } else {
@@ -694,7 +721,7 @@ class MDNS extends EventTarget {
     if (answerResourceRecords.length === 0) return;
 
     const responsePacket: Packet = {
-      id: 0,
+      id: this._id,
       flags: {
         opcode: PacketOpCode.QUERY,
         rcode: RCode.NoError,
@@ -823,7 +850,7 @@ class MDNS extends EventTarget {
     if (allRemainingQuestions.length !== 0) {
       await this.sendPacket(
         {
-          id: 0,
+          id: this._id,
           flags: {
             opcode: PacketOpCode.QUERY,
             rcode: RCode.NoError,
@@ -934,7 +961,7 @@ class MDNS extends EventTarget {
         0,
       );
       const advertisePacket: Packet = {
-        id: 0,
+        id: this._id,
         flags: {
           opcode: PacketOpCode.QUERY,
           rcode: RCode.NoError,
@@ -998,7 +1025,7 @@ class MDNS extends EventTarget {
 
     if (!advertise) return;
     const advertisePacket: Packet = {
-      id: 0,
+      id: this._id,
       flags: {
         opcode: PacketOpCode.QUERY,
         rcode: RCode.NoError,
@@ -1030,7 +1057,7 @@ class MDNS extends EventTarget {
     this.localServices.delete(fdqn);
     this.localRecordCacheDirty = true;
     const advertisePacket: Packet = {
-      id: 0,
+      id: this._id,
       flags: {
         opcode: PacketOpCode.QUERY,
         rcode: RCode.NoError,
@@ -1069,7 +1096,7 @@ class MDNS extends EventTarget {
       unicast: false,
     };
     const queryPacket: Packet = {
-      id: 0,
+      id: this._id,
       flags: {
         opcode: PacketOpCode.QUERY,
         rcode: RCode.NoError,

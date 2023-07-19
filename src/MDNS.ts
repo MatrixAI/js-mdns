@@ -333,7 +333,7 @@ class MDNS extends EventTarget {
         socket.once('error', rejectErrorP);
         const socketBindP = socketBind(
           port,
-          platform !== 'win32' ? linkLocalGroup : undefined,
+          platform === 'linux' ? linkLocalGroup : undefined,
         );
         try {
           await Promise.race([socketBindP, errorP]);

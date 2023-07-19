@@ -192,8 +192,8 @@ build:windows:
       coverage_report:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
-      paths:
-        - ./prebuilds/
+    paths:
+      - ./prebuilds/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on staging commits and ignores version commits

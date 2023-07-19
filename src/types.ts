@@ -1,5 +1,3 @@
-import { OPTRecord, ResourceRecord, RType } from './dns';
-
 /**
  * Opaque types are wrappers of existing types
  * that require smart constructors

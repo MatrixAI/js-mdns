@@ -557,11 +557,12 @@ class MDNS extends EventTarget {
       }
     }
 
-    let packet: Packet | undefined;
+    let packet: Packet;
     try {
       packet = parsePacket(msg);
-    } catch (err) {}
-    if (packet == null) return;
+    } catch (err) {
+      return;
+    }
     if (packet.flags.type === PacketType.QUERY) {
       await this.handleSocketMessageQuery(packet, rinfo, socket);
     } else {

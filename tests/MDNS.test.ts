@@ -1,4 +1,4 @@
-import type { MDNSServiceEvent, MDNSServiceRemovedEvent } from '@/events';
+import type { MDNSServiceEvent } from '@/events';
 import type { Hostname, Port } from '@/types';
 import MDNS from '@/MDNS';
 

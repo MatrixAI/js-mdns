@@ -443,25 +443,23 @@ class MDNS extends EventTarget {
       advertisement.cancel();
     }
 
-    const abortController = new AbortController();
-    let timer: Timer | undefined;
-
-    abortController.signal.addEventListener('abort', () => {
-      timer?.cancel();
-      this.advertisements.delete(advertisementKey);
-    });
-
-    const promise = new PromiseCancellable<void>(async (resolve, reject) => {
-      const rejectP = () => {
-        this.advertisements.delete(advertisementKey);
-        reject();
-      };
-      await this.sendPacket(packet, socket).catch(rejectP);
-      timer = new Timer(async () => {
-        await this.sendPacket(packet, socket).catch(rejectP);
-        resolve();
-      }, 1000);
-    }, abortController);
+    const promise = new PromiseCancellable<void>(
+      async (resolve, reject, signal) => {
+        const rejectFn = (reason: any) => {
+          this.advertisements.delete(advertisementKey);
+          reject(reason);
+        };
+        const timer = new Timer(async () => {
+          await this.sendPacket(packet, socket).catch(rejectFn);
+          resolve();
+        }, 1000);
+        signal.addEventListener('abort', () => {
+          timer.cancel('abort');
+          this.advertisements.delete(advertisementKey);
+        });
+        await this.sendPacket(packet, socket).catch(rejectFn);
+      },
+    );
 
     this.advertisements.set(advertisementKey, promise);
   }
@@ -499,7 +497,7 @@ class MDNS extends EventTarget {
       try {
         await socketInfo?.send(message, this._port, sendAddress);
       } catch (e) {
-        if (e.code === "ECANCELED") return;
+        if (e.code === 'ECANCELED') return;
         throw new errors.ErrorMDNSSocketInvalidSendAddress(
           `Could not send packet to ${sendAddress}`,
           {
@@ -1086,32 +1084,35 @@ class MDNS extends EventTarget {
       authorities: [],
     };
 
-    let timer: Timer | undefined;
-    let delayMilis = minDelay * 1000;
-    const maxDelayMilis = maxDelay * 1000;
+    const promise = new PromiseCancellable<void>(
+      async (_resolve, reject, signal) => {
+        const rejectFn = (reason: any) => {
+          this.queries.delete(serviceDomain);
+          reject(reason);
+        };
+        let delayMilis = minDelay * 1000;
+        const maxDelayMilis = maxDelay * 1000;
 
-    const abortController = new AbortController();
-    abortController.signal.addEventListener('abort', () => {
-      timer?.cancel();
-      this.queries.delete(serviceDomain);
-    });
+        let timer: Timer;
 
-    const promise = new PromiseCancellable<void>(async (_resolve, reject) => {
-      const rejectP = () => {
-        this.queries.delete(serviceDomain);
-        reject();
-      };
-      await this.sendPacket(queryPacket).catch(rejectP);
-      const setTimer = () => {
-        timer = new Timer(() => {
-          this.sendPacket(queryPacket).catch(rejectP);
-          setTimer();
-        }, delayMilis);
-        delayMilis *= 2;
-        if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
-      };
-      setTimer();
-    }, abortController);
+        const setTimer = () => {
+          timer = new Timer(async () => {
+            await this.sendPacket(queryPacket).catch(rejectFn);
+            setTimer();
+          }, delayMilis);
+          delayMilis *= 2;
+          if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
+        };
+        setTimer();
+
+        signal.addEventListener('abort', () => {
+          timer.cancel('abort');
+          this.queries.delete(serviceDomain);
+        });
+
+        await this.sendPacket(queryPacket).catch(rejectFn);
+      },
+    );
 
     this.queries.set(serviceDomain, promise);
   }

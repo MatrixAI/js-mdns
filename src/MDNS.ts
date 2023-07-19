@@ -499,7 +499,7 @@ class MDNS extends EventTarget {
       try {
         await socketInfo?.send(message, this._port, sendAddress);
       } catch (e) {
-        if (e.code === "ECANCELED") return;
+        if (e.code === 'ECANCELED') return;
         throw new errors.ErrorMDNSSocketInvalidSendAddress(
           `Could not send packet to ${sendAddress}`,
           {
@@ -950,8 +950,8 @@ class MDNS extends EventTarget {
         additionals: [],
         authorities: [],
       };
-        await this.sendPacket(advertisePacket, socket);
-      }
+      await this.sendPacket(advertisePacket, socket);
+    }
 
     // Clear Services and Cache
     await this.localRecordCache.destroy();
@@ -1086,29 +1086,31 @@ class MDNS extends EventTarget {
       authorities: [],
     };
 
-    const promise = new PromiseCancellable<void>(async (_resolve, reject, signal) => {
-      let delayMilis = minDelay * 1000;
-      const maxDelayMilis = maxDelay * 1000;
-  
-      let timer: Timer;
-      
-      const setTimer = () => {
-        timer = new Timer(async () => {
-          await this.sendPacket(queryPacket).catch(reject);
-          setTimer();
-        }, delayMilis);
-        delayMilis *= 2;
-        if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
-      }
-      setTimer();
+    const promise = new PromiseCancellable<void>(
+      async (_resolve, reject, signal) => {
+        let delayMilis = minDelay * 1000;
+        const maxDelayMilis = maxDelay * 1000;
 
-      signal.addEventListener('abort', () => {
-        timer.cancel('abort');
-        this.queries.delete(serviceDomain);
-      });
+        let timer: Timer;
 
-      await this.sendPacket(queryPacket).catch(reject);
-    });
+        const setTimer = () => {
+          timer = new Timer(async () => {
+            await this.sendPacket(queryPacket).catch(reject);
+            setTimer();
+          }, delayMilis);
+          delayMilis *= 2;
+          if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
+        };
+        setTimer();
+
+        signal.addEventListener('abort', () => {
+          timer.cancel('abort');
+          this.queries.delete(serviceDomain);
+        });
+
+        await this.sendPacket(queryPacket).catch(reject);
+      },
+    );
 
     this.queries.set(serviceDomain, promise);
   }

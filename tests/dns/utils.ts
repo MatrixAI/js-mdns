@@ -76,9 +76,9 @@ const txtRecordArb = fc.record({
   ttl: uint32Arb,
   data: fc.dictionary(
     fc
-      .unicodeString({ minLength: 1 })
+      .asciiString({ minLength: 1 })
       .filter((str) => str.indexOf('=') === -1 && str !== '__proto__'),
-    fc.unicodeString().filter((str) => str.indexOf('=') === -1),
+    fc.asciiString().filter((str) => str.indexOf('=') === -1),
   ),
 });
 

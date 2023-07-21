@@ -1,4 +1,12 @@
-import type { Host, Hostname, Port, Service, NetworkInterfaces, SocketInfo, MulticastSocketInfo } from './types';
+import type {
+  Host,
+  Hostname,
+  Port,
+  Service,
+  NetworkInterfaces,
+  SocketInfo,
+  MulticastSocketInfo,
+} from './types';
 import type { MDNSCacheExpiredEvent } from './cache';
 import type {
   CachableResourceRecord,
@@ -45,10 +53,7 @@ class MDNS extends EventTarget {
   protected networkRecordCache: ResourceRecordCache;
   protected networkServices: Map<Hostname, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
-  protected socketMap: WeakMap<
-    dgram.Socket,
-    SocketInfo
-  > = new WeakMap();
+  protected socketMap: WeakMap<dgram.Socket, SocketInfo> = new WeakMap();
   protected socketHostTable: Table<
     {
       networkInterfaceName: string;
@@ -146,10 +151,13 @@ class MDNS extends EventTarget {
    * @param opts
    * @param opts.port - The port to bind to. Defaults to 5353 the default MDNS port. Defaults to 5353.
    * @param opts.ipv6Only - Makes MDNS to bind exclusively IPv6 sockets. Defaults to false.
-   * @param opts.groups - The multicast group IP addresses to multi-cast on. This can have both IPv4 and IPv6. Defaults to `['224.0.0.251', 'ff02::fb']`.
+   * @param opts.groups - The multicast group IP addresses to multi-cast on. This must as least have one element. This can have both IPv4 and IPv6 and must. Defaults to `['224.0.0.251', 'ff02::fb']`.
    * @param opts.hostname - The hostname to use for the MDNS stack. Defaults to the OS hostname.
    * @param opts.advertise - Allows MDNS to advertise it's hostnames. Defaults to true.
    * @param opts.id - The unique unsigned 16 bit integer ID used for all outgoing MDNS packets. Defaults to a random number.
+   * @throws {RangeError} - If `opts.groups` is empty.
+   * @throws {ErrorMDNSSocketInvalidBindAddress} - If a socket cannot bind.
+   * @throws {ErrorMDNSInterfaceRange} - If no valid interfaces have been found.
    */
   public async start({
     port = 5353 as Port,
@@ -256,21 +264,21 @@ class MDNS extends EventTarget {
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
         if (networkAddress.internal) continue;
-        const { address, family, netmask, scopeid } = networkAddress;
+        const { address, family, netmask } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
           socketHosts.push([
             address as Host,
             'udp6',
             networkInterfaceName,
-            scopeid,
+            networkAddress.scopeid,
           ]);
         } else {
           socketHosts.push([
             address as Host,
             family === 'IPv4' ? 'udp4' : 'udp6',
             networkInterfaceName,
-            scopeid,
+            family === 'IPv6' ? networkAddress.scopeid : undefined,
           ]);
         }
         try {
@@ -435,7 +443,6 @@ class MDNS extends EventTarget {
     // And we have to decide what we are doing here
   }
 
-  // Use set of timers instead instead of dangling
   private advertise(
     packet: Packet,
     advertisementKey: string,
@@ -470,7 +477,10 @@ class MDNS extends EventTarget {
   /**
    * If the socket is not provided, the message will be sent to all multicast sockets.
    */
-  private async sendMulticastPacket(packet: Packet, sockets?: MulticastSocketInfo | Array<MulticastSocketInfo>) {
+  private async sendMulticastPacket(
+    packet: Packet,
+    sockets?: MulticastSocketInfo | Array<MulticastSocketInfo>,
+  ) {
     if (sockets == null) {
       const unicastSocketInfo = this.sockets.flatMap((s) => {
         const socketInfo = this.socketMap.get(s);
@@ -478,8 +488,7 @@ class MDNS extends EventTarget {
         return socketInfo;
       });
       return this.sendMulticastPacket(packet, unicastSocketInfo);
-    }
-    else if (!Array.isArray(sockets)) {
+    } else if (!Array.isArray(sockets)) {
       return this.sendMulticastPacket(packet, [sockets]);
     }
     for (const socketInfo of sockets) {
@@ -519,19 +528,16 @@ class MDNS extends EventTarget {
     try {
       parsedAddress = IPv4.fromString(addressHost);
       parsedFamily = 'IPv4';
-    }
-    catch (err) {
-    }
+    } catch (err) {}
     try {
-      const [remoteAddress_, remoteNetworkInterfaceName_] =
-        addressHost.split('%', 2);
+      const [remoteAddress_, remoteNetworkInterfaceName_] = addressHost.split(
+        '%',
+        2,
+      );
       parsedAddress = IPv6.fromString(remoteAddress_);
       parsedNetworkInterfaceIndex = remoteNetworkInterfaceName_;
       parsedFamily = 'IPv6';
-    }
-    catch (err) {
-
-    }
+    } catch (err) {}
     if (parsedAddress == null || parsedFamily == null) return;
 
     for (const [_rowI, socketHost] of this.socketHostTable) {
@@ -546,8 +552,7 @@ class MDNS extends EventTarget {
       } else if (
         parsedNetworkInterfaceIndex != null &&
         (parsedNetworkInterfaceIndex !== socketHost.networkInterfaceName ||
-          parseInt(parsedNetworkInterfaceIndex) !==
-            (socketHost as any).scopeid)
+          parseInt(parsedNetworkInterfaceIndex) !== (socketHost as any).scopeid)
       ) {
         continue;
       }
@@ -634,9 +639,10 @@ class MDNS extends EventTarget {
     let networkInterfaceName: string | undefined;
 
     if (socketInfo.unicast) {
-      networkInterfaceName = this.findSocketHost(rinfo.address as Host)?.networkInterfaceName;
-    }
-    else {
+      networkInterfaceName = this.findSocketHost(
+        rinfo.address as Host,
+      )?.networkInterfaceName;
+    } else {
       networkInterfaceName = socketInfo?.networkInterfaceName;
     }
 
@@ -760,20 +766,11 @@ class MDNS extends EventTarget {
     };
     // If a query was received through unicast, we respond through unicast, otherwise we respond through multicast
     if (canResponseBeUnicast ?? socketInfo.unicast) {
-      await this.sendPacket(
-        responsePacket,
-        socketInfo,
-        rinfo.address as Host,
-      );
-    }
-    else {
-      await this.sendMulticastPacket(
-        responsePacket,
-        socketInfo
-      );
+      await this.sendPacket(responsePacket, socketInfo, rinfo.address as Host);
+    } else {
+      await this.sendMulticastPacket(responsePacket, socketInfo);
     }
   }
-
 
   private async handleSocketMessageResponse(
     packet: Packet,
@@ -887,7 +884,6 @@ class MDNS extends EventTarget {
       allRemainingQuestions.push(...remainingQuestions.values());
     }
 
-
     if (allRemainingQuestions.length !== 0) {
       const packet: Packet = {
         id: this._id,
@@ -908,13 +904,22 @@ class MDNS extends EventTarget {
         if (socketHost != null) {
           for (const socket of this.sockets) {
             const senderSocketInfo = this.socketMap.get(socket);
-            if (senderSocketInfo == null || senderSocketInfo.unicast || senderSocketInfo.host !== socketHost.address) continue;
+            if (
+              senderSocketInfo == null ||
+              senderSocketInfo.unicast ||
+              senderSocketInfo.host !== socketHost.address
+            ) {
+              continue;
+            }
             await this.sendMulticastPacket(packet, senderSocketInfo);
             return;
           }
         }
       }
-      await this.sendMulticastPacket(packet, !socketInfo.unicast ? socketInfo : undefined);
+      await this.sendMulticastPacket(
+        packet,
+        !socketInfo.unicast ? socketInfo : undefined,
+      );
     }
   }
 
@@ -979,7 +984,12 @@ class MDNS extends EventTarget {
     );
   }
 
-  // Unregister all services, hosts, and sockets. For platforms with a built-in mDNS responder, this will not actually stop the responder.
+  /**
+   * Stops MDNS
+   * This will unregister all services and hosts, sending a goodbye packet.
+   * This will flush all records from the cache.
+   * This will close all sockets.
+   */
   public async stop(): Promise<void> {
     // Cancel Queries and Advertisements
     for (const query of this.queries.values()) {
@@ -1044,6 +1054,17 @@ class MDNS extends EventTarget {
     this.sockets = [];
   }
 
+  /**
+   * Registers a service
+   * @param opts
+   * @param opts.name - The name of the service you want to register.
+   * @param opts.type - The type of service you want to register.
+   * @param opts.protocol - The protocol of service you want to register. This is either 'udp' or 'tcp'.
+   * @param opts.port - The port of the service you want to register.
+   * @param opts.txt - The TXT data of the service you want to register. This is represented as a key-value POJO.
+   * @param opts.advertise - Allows MDNS to advertise the service on registration. Defaults to true.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
   public registerService({
     name,
     type,
@@ -1091,6 +1112,14 @@ class MDNS extends EventTarget {
     this.advertise(advertisePacket, fdqn);
   }
 
+  /**
+   * Un-registers a service that you have registered with {@link MDNS.registerService}
+   * @param opts
+   * @param opts.name - The name of the service you want to unregister.
+   * @param opts.type - The type of service you want to unregister.
+   * @param opts.protocol - The protocol of service you want to unregister. This is either 'udp' or 'tcp'.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
   public unregisterService({
     name,
     type,
@@ -1128,7 +1157,15 @@ class MDNS extends EventTarget {
     this.advertise(advertisePacket, fdqn);
   }
 
-  // Query for all services of a type and protocol, the results will be emitted to eventtarget of the instance of this class.
+  /**
+   * Start a query for services of a specific type and protocol
+   * @param opts
+   * @param opts.type - The type of service you want to query for.
+   * @param opts.protocol - The protocol of service you want to query for. This is either 'udp' or 'tcp'.
+   * @param opts.minDelay - The minimum delay between queries in seconds. Defaults to 1.
+   * @param opts.maxDelay - The maximum delay between queries in seconds. Defaults to 3600 (1 hour).
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
   public startQuery({
     type,
     protocol,
@@ -1193,6 +1230,13 @@ class MDNS extends EventTarget {
     this.queries.set(serviceDomain, promise);
   }
 
+  /**
+   * Stops a service query that you have started with {@link MDNS.startQuery}
+   * @param opts
+   * @param opts.type - The type of service you want to stop querying for.
+   * @param opts.protocol - The protocol of service you want to stop querying for. This is either 'udp' or 'tcp'.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
   public stopQuery({
     type,
     protocol,

@@ -57,8 +57,15 @@ type NetworkAddress = {
   family: 'IPv4' | 'IPv6';
   internal: boolean;
   netmask: string;
-  scopeid?: number;
-};
+} & (
+  | {
+      family: 'IPv4';
+    }
+  | {
+      family: 'IPv6';
+      scopeid: number;
+    }
+);
 
 type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;
 
@@ -66,18 +73,19 @@ type BaseSocketInfo = {
   close: () => Promise<void>;
   send: (...params: Array<any>) => Promise<number>;
   udpType: 'udp4' | 'udp6';
-}
+  unicast?: boolean;
+};
 
 type UnicastSocketInfo = BaseSocketInfo & {
   unicast: true;
-}
+};
 
 type MulticastSocketInfo = BaseSocketInfo & {
   unicast?: false;
   networkInterfaceName: string;
   host: Host;
   group: Host;
-}
+};
 
 type SocketInfo = UnicastSocketInfo | MulticastSocketInfo;
 
@@ -95,5 +103,5 @@ export type {
   BaseSocketInfo,
   UnicastSocketInfo,
   MulticastSocketInfo,
-  SocketInfo
+  SocketInfo,
 };

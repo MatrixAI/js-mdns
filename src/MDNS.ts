@@ -1,4 +1,4 @@
-import type { Host, Hostname, Port, Service, NetworkInterfaces } from './types';
+import type { Host, Hostname, Port, Service, NetworkInterfaces, SocketInfo, MulticastSocketInfo } from './types';
 import type { MDNSCacheExpiredEvent } from './cache';
 import type {
   CachableResourceRecord,
@@ -47,22 +47,7 @@ class MDNS extends EventTarget {
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<
     dgram.Socket,
-    {
-      close: () => Promise<void>;
-      send: (...params: Array<any>) => Promise<number>;
-
-      udpType: 'udp4' | 'udp6';
-    } & (
-      | {
-          unicast: true;
-        }
-      | {
-          unicast?: false;
-          networkInterfaceName: string;
-          host: Host;
-          group: Host;
-        }
-    )
+    SocketInfo
   > = new WeakMap();
   protected socketHostTable: Table<
     {
@@ -189,6 +174,10 @@ class MDNS extends EventTarget {
     const sockets: Array<dgram.Socket> = [];
     const platform = utils.getPlatform();
     const multicastTTL = 255;
+    // MDNS requires all hostnames to have a `.local` with it
+    hostname = (hostname + '.local') as Hostname;
+    // DNS Packet ID must be a 16 bit unsigned integer
+    id = id & 0xffff;
 
     let unicast = false;
 
@@ -249,10 +238,6 @@ class MDNS extends EventTarget {
         unicast = false;
       }
     }
-
-    // TODO: move this to where it is exactly needed so `hostname` should be the same property
-    // MDNS requires all hostnames to have a `.local` with it
-    hostname = (hostname + '.local') as Hostname;
 
     this.logger.info(`Start ${this.constructor.name}`);
 
@@ -315,7 +300,6 @@ class MDNS extends EventTarget {
       }
     }
     if (socketHosts.length < 1) {
-      // TODO: replace this with domain specific error
       throw new errors.ErrorMDNSInterfaceRange(
         'MDNS could not resolve any valid network interfaces',
       );
@@ -369,13 +353,10 @@ class MDNS extends EventTarget {
           for (const socket of sockets.reverse()) {
             socket.close();
           }
-          // TODO: edit comment
-          // Possible binding failure due to EINVAL or ENOTFOUND.
-          // EINVAL due to using IPv4 address where udp6 is specified.
-          // ENOTFOUND when the hostname doesn't resolve, or doesn't resolve to IPv6 if udp6 is specified
-          // or doesn't resolve to IPv4 if udp4 is specified.
+          // Possible binding failure due to EINVAL.
+          // EINVAL due to an invalid multicast group address.
           throw new errors.ErrorMDNSSocketInvalidBindAddress(
-            `Could not bind socket to ${linkLocalGroup}`,
+            `Could not bind socket with multicast group ${linkLocalGroup}:${port}`,
             {
               cause: e,
             },
@@ -447,7 +428,7 @@ class MDNS extends EventTarget {
         additionals: [],
         authorities: [],
       };
-      this.advertise(advertisePacket, socketInfo.host, socket);
+      this.advertise(advertisePacket, socketInfo.host, socketInfo);
     }
 
     // We have to figure out 1 socket at a time
@@ -458,7 +439,7 @@ class MDNS extends EventTarget {
   private advertise(
     packet: Packet,
     advertisementKey: string,
-    socket?: dgram.Socket,
+    socket?: MulticastSocketInfo | Array<MulticastSocketInfo>,
   ) {
     const advertisement = this.advertisements.get(advertisementKey);
     if (advertisement != null) {
@@ -472,14 +453,14 @@ class MDNS extends EventTarget {
           reject(reason);
         };
         const timer = new Timer(async () => {
-          await this.sendPacket(packet, socket).catch(rejectFn);
+          await this.sendMulticastPacket(packet, socket).catch(rejectFn);
           resolve();
         }, 1000);
         signal.addEventListener('abort', () => {
           timer.cancel('abort');
           this.advertisements.delete(advertisementKey);
         });
-        await this.sendPacket(packet, socket).catch(rejectFn);
+        await this.sendMulticastPacket(packet, socket).catch(rejectFn);
       },
     );
 
@@ -489,44 +470,88 @@ class MDNS extends EventTarget {
   /**
    * If the socket is not provided, the message will be sent to all multicast sockets.
    */
+  private async sendMulticastPacket(packet: Packet, sockets?: MulticastSocketInfo | Array<MulticastSocketInfo>) {
+    if (sockets == null) {
+      const unicastSocketInfo = this.sockets.flatMap((s) => {
+        const socketInfo = this.socketMap.get(s);
+        if (socketInfo == null || socketInfo.unicast) return [];
+        return socketInfo;
+      });
+      return this.sendMulticastPacket(packet, unicastSocketInfo);
+    }
+    else if (!Array.isArray(sockets)) {
+      return this.sendMulticastPacket(packet, [sockets]);
+    }
+    for (const socketInfo of sockets) {
+      if (socketInfo.unicast) continue;
+      await this.sendPacket(packet, socketInfo, socketInfo.group);
+    }
+  }
+
   private async sendPacket(
     packet: Packet,
-    socket?: dgram.Socket,
-    address?: Host,
+    sockets: SocketInfo | Array<SocketInfo>,
+    address: Host,
   ) {
-    const message = generatePacket(packet);
-    let sockets: dgram.Socket[];
-    if (socket == null) {
-      sockets = this.sockets.filter(
-        (s) => this.socketMap.get(s)?.unicast !== true,
-      );
-    } else {
-      sockets = [socket];
+    if (!Array.isArray(sockets)) {
+      return this.sendPacket(packet, [sockets], address);
     }
-    for (const socket of sockets) {
-      const socketInfo = this.socketMap.get(socket);
-      let sendAddress: Host | undefined;
-      if (socketInfo?.unicast) {
-        if (address == null) {
-          throw new errors.ErrorMDNSSocketInvalidSendAddress(
-            `No send address provided for unicast socket`,
-          );
-        }
-        sendAddress = address;
-      } else {
-        sendAddress = address ?? socketInfo?.group;
-      }
+    const message = generatePacket(packet);
+    for (const socketInfo of sockets) {
       try {
-        await socketInfo?.send(message, this._port, sendAddress);
+        await socketInfo.send(message, this._port, address);
       } catch (e) {
         if (e.code === 'ECANCELED') return;
         throw new errors.ErrorMDNSSocketInvalidSendAddress(
-          `Could not send packet to ${sendAddress}`,
+          `Could not send packet to ${address}`,
           {
             cause: e,
           },
         );
       }
+    }
+  }
+
+  private findSocketHost(addressHost: Host) {
+    let parsedAddress: IPv4 | IPv6 | undefined;
+    let parsedFamily: 'IPv4' | 'IPv6' | undefined;
+    let parsedNetworkInterfaceIndex: string | undefined;
+    try {
+      parsedAddress = IPv4.fromString(addressHost);
+      parsedFamily = 'IPv4';
+    }
+    catch (err) {
+    }
+    try {
+      const [remoteAddress_, remoteNetworkInterfaceName_] =
+        addressHost.split('%', 2);
+      parsedAddress = IPv6.fromString(remoteAddress_);
+      parsedNetworkInterfaceIndex = remoteNetworkInterfaceName_;
+      parsedFamily = 'IPv6';
+    }
+    catch (err) {
+
+    }
+    if (parsedAddress == null || parsedFamily == null) return;
+
+    for (const [_rowI, socketHost] of this.socketHostTable) {
+      if (parsedFamily !== socketHost.family) continue;
+      const localAddress = socketHost.parsedAddress;
+      const mask = socketHost.parsedMask;
+      if (
+        (mask.value & parsedAddress.value) !==
+        (mask.value & localAddress.value)
+      ) {
+        continue;
+      } else if (
+        parsedNetworkInterfaceIndex != null &&
+        (parsedNetworkInterfaceIndex !== socketHost.networkInterfaceName ||
+          parseInt(parsedNetworkInterfaceIndex) !==
+            (socketHost as any).scopeid)
+      ) {
+        continue;
+      }
+      return socketHost;
     }
   }
 
@@ -552,12 +577,6 @@ class MDNS extends EventTarget {
           let remoteNetworkInterfaceIndex: string | undefined;
           if (address.family === 'IPv4') {
             remoteAddress = IPv4.fromString(rinfo.address);
-            if (
-              (mask.value & remoteAddress.value) !==
-              (mask.value & localAddress.value)
-            ) {
-              return;
-            }
           } else {
             const [remoteAddress_, remoteNetworkInterfaceName_] =
               rinfo.address.split('%', 2);
@@ -603,7 +622,7 @@ class MDNS extends EventTarget {
     socket: dgram.Socket,
   ) {
     const socketInfo = this.socketMap.get(socket);
-    if (socketInfo?.unicast) return;
+    if (socketInfo == null) return;
     if (packet.flags.type !== PacketType.QUERY) return;
     const answerResourceRecords: ResourceRecord[] = [];
     const additionalResourceRecords: ResourceRecord[] = [];
@@ -612,7 +631,14 @@ class MDNS extends EventTarget {
     let hasHostRecordsBeenProcessed = false;
     let canResponseBeUnicast = false;
 
-    const networkInterfaceName = socketInfo?.networkInterfaceName;
+    let networkInterfaceName: string | undefined;
+
+    if (socketInfo.unicast) {
+      networkInterfaceName = this.findSocketHost(rinfo.address as Host)?.networkInterfaceName;
+    }
+    else {
+      networkInterfaceName = socketInfo?.networkInterfaceName;
+    }
 
     const ips = this.socketHostTable
       .whereRows(['networkInterfaceName'], [networkInterfaceName])
@@ -636,7 +662,7 @@ class MDNS extends EventTarget {
 
     // Handle host questions first
     for (const question of packet.questions) {
-      if (question.unicast && this._unicast) {
+      if (question.unicast) {
         canResponseBeUnicast = true;
       }
       if (
@@ -732,12 +758,22 @@ class MDNS extends EventTarget {
       additionals: additionalResourceRecords,
       authorities: [],
     };
-    await this.sendPacket(
-      responsePacket,
-      socket,
-      canResponseBeUnicast ? (rinfo.address as Host) : undefined,
-    );
+    // If a query was received through unicast, we respond through unicast, otherwise we respond through multicast
+    if (canResponseBeUnicast ?? socketInfo.unicast) {
+      await this.sendPacket(
+        responsePacket,
+        socketInfo,
+        rinfo.address as Host,
+      );
+    }
+    else {
+      await this.sendMulticastPacket(
+        responsePacket,
+        socketInfo
+      );
+    }
   }
+
 
   private async handleSocketMessageResponse(
     packet: Packet,
@@ -746,6 +782,7 @@ class MDNS extends EventTarget {
   ) {
     await this.processIncomingResourceRecords(
       packet.answers.concat(packet.additionals),
+      rinfo,
       socket,
     );
 
@@ -756,8 +793,11 @@ class MDNS extends EventTarget {
 
   private async processIncomingResourceRecords(
     resourceRecords: ResourceRecord[],
+    rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
   ) {
+    const socketInfo = this.socketMap.get(socket);
+    if (socketInfo == null) return;
     // Filter out all records to only contain ones that are cachable (excludes NSEC, etc.)
     const cachableResourceRecords = resourceRecords.filter(
       isCachableResourceRecord,
@@ -784,13 +824,13 @@ class MDNS extends EventTarget {
         name: dirtiedServiceFdqn,
         type: QType.TXT,
         class: QClass.IN,
-        unicast: false,
+        unicast: this._unicast,
       });
       remainingQuestions.set(QType.SRV, {
         name: dirtiedServiceFdqn,
         type: QType.SRV,
         class: QClass.IN,
-        unicast: false,
+        unicast: this._unicast,
       });
       let responseRecords = this.networkRecordCache.whereGet([
         ...remainingQuestions.values(),
@@ -816,13 +856,13 @@ class MDNS extends EventTarget {
         name: partialService.hostname,
         type: QType.A,
         class: QClass.IN,
-        unicast: false,
+        unicast: this._unicast,
       });
       remainingQuestions.set(QType.AAAA, {
         name: partialService.hostname,
         type: QType.AAAA,
         class: QClass.IN,
-        unicast: false,
+        unicast: this._unicast,
       });
       responseRecords = this.networkRecordCache.whereGet([
         ...remainingQuestions.values(),
@@ -847,22 +887,34 @@ class MDNS extends EventTarget {
       allRemainingQuestions.push(...remainingQuestions.values());
     }
 
+
     if (allRemainingQuestions.length !== 0) {
-      await this.sendPacket(
-        {
-          id: this._id,
-          flags: {
-            opcode: PacketOpCode.QUERY,
-            rcode: RCode.NoError,
-            type: PacketType.QUERY,
-          },
-          questions: allRemainingQuestions,
-          answers: [],
-          additionals: [],
-          authorities: [],
+      const packet: Packet = {
+        id: this._id,
+        flags: {
+          opcode: PacketOpCode.QUERY,
+          rcode: RCode.NoError,
+          type: PacketType.QUERY,
         },
-        socket,
-      );
+        questions: allRemainingQuestions,
+        answers: [],
+        additionals: [],
+        authorities: [],
+      };
+      // TODO: put dgram.Socket onto the socketHostMap
+      // when a unicast response is received, we make sure to only send a multicast query back on the interface that received the unicast response.
+      if (socketInfo.unicast) {
+        const socketHost = this.findSocketHost(rinfo.address as Host);
+        if (socketHost != null) {
+          for (const socket of this.sockets) {
+            const senderSocketInfo = this.socketMap.get(socket);
+            if (senderSocketInfo == null || senderSocketInfo.unicast || senderSocketInfo.host !== socketHost.address) continue;
+            await this.sendMulticastPacket(packet, senderSocketInfo);
+            return;
+          }
+        }
+      }
+      await this.sendMulticastPacket(packet, !socketInfo.unicast ? socketInfo : undefined);
     }
   }
 
@@ -972,7 +1024,7 @@ class MDNS extends EventTarget {
         additionals: [],
         authorities: [],
       };
-      await this.sendPacket(advertisePacket, socket);
+      await this.sendMulticastPacket(advertisePacket, socketInfo);
     }
 
     // Clear Services and Cache
@@ -1093,7 +1145,7 @@ class MDNS extends EventTarget {
       name: serviceDomain,
       type: QType.PTR,
       class: QClass.IN,
-      unicast: false,
+      unicast: this._unicast,
     };
     const queryPacket: Packet = {
       id: this._id,
@@ -1121,7 +1173,7 @@ class MDNS extends EventTarget {
 
         const setTimer = () => {
           timer = new Timer(async () => {
-            await this.sendPacket(queryPacket).catch(rejectFn);
+            await this.sendMulticastPacket(queryPacket).catch(rejectFn);
             setTimer();
           }, delayMilis);
           delayMilis *= 2;
@@ -1134,7 +1186,7 @@ class MDNS extends EventTarget {
           this.queries.delete(serviceDomain);
         });
 
-        await this.sendPacket(queryPacket).catch(rejectFn);
+        await this.sendMulticastPacket(queryPacket).catch(rejectFn);
       },
     );
 

@@ -24,7 +24,7 @@ import {
   txtRecordArb,
 } from './utils';
 
-describe('/dns/utils.ts', () => {
+describe('dns packet parser/generator', () => {
   testProp('labels', [fc.domain()], (domain) => {
     const generatedLabels = generateLabels(domain);
     const labels = parseLabels(generatedLabels, generatedLabels, false);

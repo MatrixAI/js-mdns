@@ -12,4 +12,8 @@
 /benches
 /build
 /builds
+/prebuild
+/prepublishOnly
+/binding.gyp
 /dist/tsbuildinfo
+

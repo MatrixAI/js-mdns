@@ -83,7 +83,7 @@ check:test:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
     paths:
-      - ./prebuilds/
+      - ./prebuild/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on feature commits and ignores version commits
@@ -193,7 +193,7 @@ build:windows:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
     paths:
-      - ./prebuilds/
+      - ./prebuild/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on staging commits and ignores version commits
@@ -243,6 +243,9 @@ build:prerelease:
     - build:macos
   # Don't interrupt publishing job
   interruptible: false
+  variables:
+    # Set the prerelease tag for prepublishOnly script
+    npm_config_tag: 'prerelease'
   script:
     - echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ./.npmrc
     - echo 'Publishing library prerelease'
@@ -251,12 +254,12 @@ build:prerelease:
       npm publish --tag prerelease --access public;
       '
     - >
-      for d in prebuilds/*; do
+      for d in prebuild/*; do
         tar \
           --create \
           --verbose \
-          --file="prebuilds/$(basename $d).tar" \
-          --directory=prebuilds \
+          --file="prebuild/$(basename $d).tar" \
+          --directory=prebuild \
           "$(basename $d)";
       done
   after_script:
@@ -323,12 +326,12 @@ release:distribution:
       npm publish --access public;
       '
     - >
-      for d in prebuilds/*; do
+      for d in /*; do
         tar \
           --create \
           --verbose \
-          --file="prebuilds/$(basename $d).tar" \
-          --directory=prebuilds \
+          --file="prebuild/$(basename $d).tar" \
+          --directory=prebuild \
           "$(basename $d)";
       done
   after_script:

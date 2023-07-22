@@ -21,10 +21,11 @@
   "gypfile": true,
   "scripts": {
     "prepare": "tsc -p ./tsconfig.build.json",
-    "install": "node-gyp-build",
     "prebuild": "node ./scripts/prebuild.js",
     "build": "shx rm -rf ./dist && tsc -p ./tsconfig.build.json",
+    "version": "node ./scripts/version.js",
     "postversion": "npm install --package-lock-only --ignore-scripts --silent",
+    "prepublishOnly": "node ./scripts/prepublishOnly.js",
     "ts-node": "ts-node",
     "test": "jest",
     "lint": "eslint '{src,tests,scripts,benches}/**/*.{js,ts}'",
@@ -41,8 +42,10 @@
     "@matrixai/table": "^1.2.0",
     "@matrixai/timer": "^1.1.1",
     "canonicalize": "^2.0.0",
-    "ip-num": "^1.5.1",
-    "node-gyp-build": "^4.6.0"
+    "ip-num": "^1.5.1"
+  },
+  "optionalDependencies": {
+    "@matrixai/mdns-linux-x64": "1.0.0"
   },
   "devDependencies": {
     "@fast-check/jest": "^1.6.2",

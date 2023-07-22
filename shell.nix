@@ -5,7 +5,7 @@ mkShell {
   nativeBuildInputs = [
     nodejs
     nodejs.python
-    clang-tools
+    cmake
     shellcheck
     gitAndTools.gh
   ];

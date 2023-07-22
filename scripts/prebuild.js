@@ -36,15 +36,16 @@ async function main(argv = process.argv) {
   while (argv.length > 0) {
     const option = argv.shift();
     let match;
-    if ((match = option.match(/--nodedir(?:=(.+)|$)/))) {
-      nodedir = match[1] ?? argv.shift();
-    } else if ((match = option.match(/--devdir(?:=(.+)|$)/))) {
-      devdir = match[1] ?? argv.shift();
-    } else if ((match = option.match(/--arch(?:=(.+)|$)/))) {
+    if ((match = option.match(/--arch(?:=(.+)|$)/))) {
       arch = match[1] ?? argv.shift();
+    } else if ((match = option.match(/--production$/))) {
+      production = true;
     } else {
       restArgs.push(option);
     }
+  }
+  if (arch == null) {
+    arch = process.env.npm_config_arch ?? os.arch();
   }
 
   if (nodedir == null) {
@@ -60,7 +61,7 @@ async function main(argv = process.argv) {
   }
 
   // If `nodedir` is specified, this means the headers are already part of the node source code
-  // When using `nix`, alwys specify the `nodedir` to avoid downloading from the internet in the middle of `nix-build`
+  // When using `nix`, always specify the `nodedir` to avoid downloading from the internet in the middle of `nix-build`
   if (nodedir == null) {
     // If `devdir` is not specified, node-gyp will place headers into default cache
     // Linux: `$XDG_CACHE_HOME/node-gyp` or `$HOME/.cache/node-gyp`
@@ -129,24 +130,19 @@ async function main(argv = process.argv) {
 
   const projectRoot = path.join(__dirname, '..');
   const buildsPath = path.join(projectRoot, 'build', 'Release');
-  const prebuildsPath = path.join(projectRoot, 'prebuilds');
+  const prebuildsPath = path.join(projectRoot, 'prebuild');
 
   const buildNames = await fs.promises.readdir(buildsPath);
   const buildName = buildNames.find((filename) => /\.node$/.test(filename));
   const buildPath = path.join(buildsPath, buildName);
 
-  const prebuildTuple = `${platform}-${arch}`;
-  // Tags are dot separated `<runtime>.<abi>.<othertag>`
-  // <runtime>: node | electron | node-webkit
-  // <abi>: napi | abi\d+
-  // Other tags depends on node-gyp-build parser
-  const prebuildTags = ['node', 'napi'].join('.');
+  const prebuildName = `mdns-${platform}-${arch}`;
   // The path must end with `.node`
   const prebuildPath =
-    path.join(prebuildsPath, prebuildTuple, prebuildTags) + '.node';
+    path.join(prebuildsPath, prebuildName) + '.node';
 
-  await fs.promises.mkdir(path.join(prebuildsPath, prebuildTuple), {
-    recursive: true,
+  await fs.promises.mkdir(prebuildsPath, {
+    recursive: true
   });
 
   console.error(`Copying ${buildPath} to ${prebuildPath}`);

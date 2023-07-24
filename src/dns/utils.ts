@@ -1,11 +1,8 @@
 import type {
   Parsed,
-  PacketOpCode,
   Packet,
   PacketFlags,
   QuestionRecord,
-  RClass,
-  RCode,
   ResourceRecord,
   StringRecord,
   SRVRecordValue,
@@ -14,7 +11,6 @@ import type {
   CachableResourceRecord,
 } from './types';
 import { IPv6 } from 'ip-num';
-import { RType } from './types';
 import * as errors from './errors';
 
 // Packet Flag Masks
@@ -33,6 +29,59 @@ const NOT_QU_MASK = 0x7fff;
 // RR masks
 const FLUSH_MASK = 0x8000; // 2 bytes, first bit set (Flush)
 const NOT_FLUSH_MASK = 0x7fff;
+
+const enum PacketType {
+  QUERY = 0,
+  RESPONSE = 1, // 16th bit set
+}
+
+const enum PacketOpCode { // RFC 6895 2.2.
+  QUERY = 0,
+  // Incomplete list
+}
+
+const enum RCode { // RFC 6895 2.3.
+  NoError = 0,
+  // Incomplete list
+}
+
+// Question RR Types
+const enum QType { // RFC 1035 3.2.2. 3.2.3.
+  A = 1,
+  CNAME = 5,
+  PTR = 12,
+  TXT = 16,
+  AAAA = 28, // RFC 3596 2.1.
+  SRV = 33, // RFC 2782
+  OPT = 41, // RFC 6891
+  NSEC = 47, // RFC 4034 4.
+  ANY = 255,
+}
+
+// Question RR Classes
+const enum QClass { // RFC 1035 3.2.4. 3.2.5.
+  IN = 1, // The internet
+  ANY = 255,
+}
+
+// Answer RR Types
+const enum RType { // RFC 1035 3.2.2.
+  A = 1,
+  CNAME = 5,
+  PTR = 12,
+  TXT = 16,
+  AAAA = 28, // RFC 3596 2.1.
+  SRV = 33, // RFC 2782
+  OPT = 41, // RFC 6891
+  NSEC = 47, // RFC 4034 4.
+  // incomplete list
+}
+
+// Answer RR Classes
+const enum RClass { // RFC 1035 3.2.4.
+  IN = 1, // The internet
+  // incomplete list
+}
 
 function concatUInt8Array(...arrays: Uint8Array[]) {
   const totalLength = arrays.reduce((acc, val) => acc + val.length, 0);
@@ -652,6 +701,13 @@ function isCachableRType(type: RType): type is CachableResourceRecord['type'] {
 }
 
 export {
+  PacketOpCode,
+  PacketType,
+  RType,
+  RCode,
+  RClass,
+  QType,
+  QClass,
   concatUInt8Array,
   encodeUInt16BE,
   encodeUInt32BE,

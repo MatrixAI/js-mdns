@@ -1,3 +1,13 @@
+import type {
+  PacketOpCode,
+  PacketType,
+  RType,
+  RCode,
+  RClass,
+  QType,
+  QClass,
+} from './utils';
+
 interface Parsed<T> {
   data: T;
   remainder: Uint8Array;
@@ -38,21 +48,6 @@ type PacketFlags = {
   checkingDisabled?: boolean;
 };
 
-const enum PacketType {
-  QUERY = 0,
-  RESPONSE = 1, // 16th bit set
-}
-
-const enum PacketOpCode { // RFC 6895 2.2.
-  QUERY = 0,
-  // Incomplete list
-}
-
-const enum RCode { // RFC 6895 2.3.
-  NoError = 0,
-  // Incomplete list
-}
-
 type QuestionRecord = {
   name: string;
   type: QType;
@@ -60,43 +55,9 @@ type QuestionRecord = {
   unicast?: boolean;
 };
 
-const enum QClass { // RFC 1035 3.2.4. 3.2.5.
-  IN = 1, // The internet
-  ANY = 255,
-}
-
-const enum QType { // RFC 1035 3.2.2. 3.2.3.
-  A = 1,
-  CNAME = 5,
-  PTR = 12,
-  TXT = 16,
-  AAAA = 28, // RFC 3596 2.1.
-  SRV = 33, // RFC 2782
-  OPT = 41, // RFC 6891
-  NSEC = 47, // RFC 4034 4.
-  ANY = 255,
-}
-
 type CachableResourceRecord = StringRecord | TXTRecord | SRVRecord | NSECRecord;
 
 type ResourceRecord = CachableResourceRecord | OPTRecord;
-
-const enum RType { // RFC 1035 3.2.2.
-  A = 1,
-  CNAME = 5,
-  PTR = 12,
-  TXT = 16,
-  AAAA = 28, // RFC 3596 2.1.
-  SRV = 33, // RFC 2782
-  OPT = 41, // RFC 6891
-  NSEC = 47, // RFC 4034 4.
-  // incomplete list
-}
-
-const enum RClass { // RFC 1035 3.2.4.
-  IN = 1, // The internet
-  // incomplete list
-}
 
 type BaseResourceRecord<T, D> = {
   name: string;
@@ -167,4 +128,3 @@ export type {
   OPTRecord,
   NSECRecord,
 };
-export { PacketOpCode, PacketType, RCode, RType, RClass, QClass, QType };

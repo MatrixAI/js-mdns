@@ -1,3 +1,5 @@
+import type { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
+
 /**
  * Opaque types are wrappers of existing types
  * that require smart constructors
@@ -89,6 +91,24 @@ type MulticastSocketInfo = BaseSocketInfo & {
 
 type SocketInfo = UnicastSocketInfo | MulticastSocketInfo;
 
+type SocketHostRow = {
+  networkInterfaceName: string;
+  address: string;
+  netmask: string;
+} & (
+  | {
+      parsedAddress: IPv4;
+      parsedMask: IPv4Mask;
+      family: 'IPv4';
+    }
+  | {
+      parsedAddress: IPv6;
+      parsedMask: IPv6Mask;
+      family: 'IPv6';
+      scopeid: number;
+    }
+);
+
 export type {
   Opaque,
   Callback,
@@ -104,4 +124,5 @@ export type {
   UnicastSocketInfo,
   MulticastSocketInfo,
   SocketInfo,
+  SocketHostRow,
 };

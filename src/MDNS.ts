@@ -6,6 +6,7 @@ import type {
   NetworkInterfaces,
   SocketInfo,
   MulticastSocketInfo,
+  SocketHostRow,
 } from './types';
 import type { MDNSCacheExpiredEvent } from './cache';
 import type {
@@ -54,25 +55,7 @@ class MDNS extends EventTarget {
   protected networkServices: Map<Hostname, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<dgram.Socket, SocketInfo> = new WeakMap();
-  protected socketHostTable: Table<
-    {
-      networkInterfaceName: string;
-      address: string;
-      netmask: string;
-    } & (
-      | {
-          parsedAddress: IPv4;
-          parsedMask: IPv4Mask;
-          family: 'IPv4';
-        }
-      | {
-          parsedAddress: IPv6;
-          parsedMask: IPv6Mask;
-          family: 'IPv6';
-          scopeid: number;
-        }
-    )
-  > = new Table(
+  protected socketHostTable: Table<SocketHostRow> = new Table(
     ['networkInterfaceName', 'address', 'family'],
     [['networkInterfaceName'], ['address']],
   );
@@ -521,24 +504,25 @@ class MDNS extends EventTarget {
     }
   }
 
-  protected findSocketHost(addressHost: Host) {
+  protected findSocketHost(addressHost: Host): SocketHostRow | undefined {
     let parsedAddress: IPv4 | IPv6 | undefined;
     let parsedFamily: 'IPv4' | 'IPv6' | undefined;
     let parsedNetworkInterfaceIndex: string | undefined;
     try {
-      parsedAddress = IPv4.fromString(addressHost);
-      parsedFamily = 'IPv4';
-    } catch (err) {}
-    try {
-      const [remoteAddress_, remoteNetworkInterfaceName_] = addressHost.split(
-        '%',
-        2,
-      );
-      parsedAddress = IPv6.fromString(remoteAddress_);
-      parsedNetworkInterfaceIndex = remoteNetworkInterfaceName_;
-      parsedFamily = 'IPv6';
-    } catch (err) {}
-    if (parsedAddress == null || parsedFamily == null) return;
+      if (utils.isIPv4(addressHost)) {
+        parsedAddress = IPv4.fromString(addressHost);
+        parsedFamily = 'IPv4';
+      } else {
+        const [remoteAddress_, remoteNetworkInterfaceName_] = (
+          addressHost as string
+        ).split('%', 2);
+        parsedAddress = IPv6.fromString(remoteAddress_);
+        parsedNetworkInterfaceIndex = remoteNetworkInterfaceName_;
+        parsedFamily = 'IPv6';
+      }
+    } catch (err) {
+      return;
+    }
 
     for (const [_rowI, socketHost] of this.socketHostTable) {
       if (parsedFamily !== socketHost.family) continue;

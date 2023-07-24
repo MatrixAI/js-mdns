@@ -1,6 +1,6 @@
 {
   "name": "@matrixai/mdns",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Matrix AI",
   "contributors": [
     {
@@ -47,7 +47,7 @@
     "ip-num": "^1.5.1"
   },
   "optionalDependencies": {
-    "@matrixai/mdns-linux-x64": "1.0.0"
+    "@matrixai/mdns-linux-x64": "1.0.1"
   },
   "devDependencies": {
     "@fast-check/jest": "^1.6.2",

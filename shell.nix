@@ -5,9 +5,9 @@ mkShell {
   nativeBuildInputs = [
     nodejs
     nodejs.python
-    cmake
     shellcheck
     gitAndTools.gh
+    clang-tools
   ];
   # Don't set rpath for native addons
   NIX_DONT_SET_RPATH = true;

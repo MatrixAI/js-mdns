@@ -21,7 +21,7 @@
   "gypfile": true,
   "scripts": {
     "prepare": "tsc -p ./tsconfig.build.json",
-    "prebuild": "node ./scripts/prebuild.js",
+    "prebuild": "node ./scripts/prebuild.js --allowed-platform=linux",
     "build": "shx rm -rf ./dist && tsc -p ./tsconfig.build.json",
     "version": "node ./scripts/version.js",
     "postversion": "npm install --package-lock-only --ignore-scripts --silent",
@@ -31,6 +31,8 @@
     "lint": "eslint '{src,tests,scripts,benches}/**/*.{js,ts}'",
     "lintfix": "eslint '{src,tests,scripts,benches}/**/*.{js,ts}' --fix",
     "lint-shell": "find ./src ./tests ./scripts -type f -regextype posix-extended -regex '.*\\.(sh)' -exec shellcheck {} +",
+    "lint-native": "find ./src -type f -regextype posix-extended -regex '.*\\.(c|cc|cpp|h|hh|hpp)' -exec clang-format --dry-run -Werror {} +",
+    "lintfix-native": "find ./src -type f -regextype posix-extended -regex '.*\\.(c|cc|cpp|h|hh|hpp)' -exec clang-format -i {} +",
     "docs": "shx rm -rf ./docs && typedoc --gitRevision master --tsconfig ./tsconfig.build.json --out ./docs src"
   },
   "dependencies": {

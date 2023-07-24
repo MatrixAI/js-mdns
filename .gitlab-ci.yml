@@ -262,6 +262,17 @@ build:prerelease:
           --directory=prebuild \
           "$(basename $d)";
       done
+    - >
+      nix-shell --arg ci true --run $'
+      gh release \
+        create "$CI_COMMIT_TAG" \
+        prebuild/*.tar \
+        --title "${CI_COMMIT_TAG}-$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        --notes "" \
+        --prerelease \
+        --target staging \
+        --repo "$GH_PROJECT_PATH";
+      '
   after_script:
     - rm -f ./.npmrc
   rules:
@@ -326,7 +337,7 @@ release:distribution:
       npm publish --access public;
       '
     - >
-      for d in /*; do
+      for d in prebuild/*; do
         tar \
           --create \
           --verbose \
@@ -334,6 +345,16 @@ release:distribution:
           --directory=prebuild \
           "$(basename $d)";
       done
+    - >
+      nix-shell --arg ci true --run $'
+      gh release \
+        create "$CI_COMMIT_TAG" \
+        prebuild/*.tar \
+        --title "${CI_COMMIT_TAG}-$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+        --notes "" \
+        --target master \
+        --repo "$GH_PROJECT_PATH";
+      '
   after_script:
     - rm -f ./.npmrc
   rules:

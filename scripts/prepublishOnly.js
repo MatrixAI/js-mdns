@@ -51,10 +51,10 @@ async function main(argv = process.argv) {
     (filename) => /^(?:[^-]+)-(?:[^-]+)-(?:[^-]+)$/.test(filename),
   );
   if (buildNames.length < 1) {
-    console.error(
-      'You must prebuild at least 1 native object with the filename of `name-platform-arch` before prepublish',
+    console.warn(
+      `There are no native objects with the filename of \`name-platform-arch\` within ${prebuildPath}, skipping prepublishOnly.`,
     );
-    process.exitCode = 1;
+    process.exitCode = 0;
     return process.exitCode;
   }
   // Extract out the org name, this may be undefined

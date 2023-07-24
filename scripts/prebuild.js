@@ -32,20 +32,23 @@ async function main(argv = process.argv) {
   let nodedir;
   let devdir;
   let arch;
+  const allowedPlatforms = [];
   const restArgs = [];
   while (argv.length > 0) {
     const option = argv.shift();
     let match;
-    if ((match = option.match(/--arch(?:=(.+)|$)/))) {
+    if ((match = option.match(/--nodedir(?:=(.+)|$)/))) {
+      nodedir = match[1] ?? argv.shift();
+    } else if ((match = option.match(/--devdir(?:=(.+)|$)/))) {
+      devdir = match[1] ?? argv.shift();
+    } else if ((match = option.match(/--arch(?:=(.+)|$)/))) {
       arch = match[1] ?? argv.shift();
+    } else if ((match = option.match(/--allowed-platform(?:=(.+)|$)/))) {
+      allowedPlatforms.push(match[1] ?? argv.shift());
     } else {
       restArgs.push(option);
     }
   }
-  if (arch == null) {
-    arch = process.env.npm_config_arch ?? os.arch();
-  }
-
   if (nodedir == null) {
     nodedir = process.env.npm_config_nodedir;
   }
@@ -141,6 +144,10 @@ async function main(argv = process.argv) {
   await fs.promises.mkdir(prebuildsPath, {
     recursive: true,
   });
+
+  if (allowedPlatforms.length > 0 && !allowedPlatforms.includes(platform)) {
+    return;
+  }
 
   console.error(`Copying ${buildPath} to ${prebuildPath}`);
   await fs.promises.copyFile(buildPath, prebuildPath);

@@ -38,8 +38,6 @@ async function main(argv = process.argv) {
     let match;
     if ((match = option.match(/--arch(?:=(.+)|$)/))) {
       arch = match[1] ?? argv.shift();
-    } else if ((match = option.match(/--production$/))) {
-      production = true;
     } else {
       restArgs.push(option);
     }
@@ -138,11 +136,10 @@ async function main(argv = process.argv) {
 
   const prebuildName = `mdns-${platform}-${arch}`;
   // The path must end with `.node`
-  const prebuildPath =
-    path.join(prebuildsPath, prebuildName) + '.node';
+  const prebuildPath = path.join(prebuildsPath, prebuildName) + '.node';
 
   await fs.promises.mkdir(prebuildsPath, {
-    recursive: true
+    recursive: true,
   });
 
   console.error(`Copying ${buildPath} to ${prebuildPath}`);

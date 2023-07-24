@@ -8,9 +8,8 @@ import type {
 } from './types';
 import type { StringRecord, ResourceRecord } from '@/dns';
 import type dgram from 'dgram';
-import dns from 'dns';
 import os from 'os';
-import { IPv4, IPv6, Validator } from 'ip-num';
+import { IPv6, Validator } from 'ip-num';
 import { RType, RClass } from '@/dns';
 
 /**

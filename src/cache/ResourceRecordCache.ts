@@ -13,7 +13,7 @@ import * as errors from './errors';
 interface ResourceRecordCache extends CreateDestroy {}
 @CreateDestroy()
 class ResourceRecordCache extends EventTarget {
-  private resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
+  protected resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
     ['name', 'type', 'class', 'data', 'ttl', 'relatedHostname', 'timestamp'],
     [
       [['name', 'type', 'class', 'data'], (...vs) => canonicalize(vs)], // For uniqueness
@@ -26,12 +26,12 @@ class ResourceRecordCache extends EventTarget {
   );
 
   // This is sorted by timestamp + ttl in milliseconds in descending order. This is only sorted when the timer is reset!
-  private resourceRecordCacheIndexesByExpiration: Array<number> = [];
-  private resourceRecordCacheTimer: Timer | undefined;
+  protected resourceRecordCacheIndexesByExpiration: Array<number> = [];
+  protected resourceRecordCacheTimer: Timer | undefined;
 
   // The max amount of records that can be stored.
-  private _max: number;
-  private _timerDisabled: boolean;
+  protected _max: number;
+  protected _timerDisabled: boolean;
 
   @ready(new errors.ErrorCacheDestroyed())
   public get max(): number {
@@ -271,7 +271,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
-  private resourceRecordCacheTimerReset() {
+  protected resourceRecordCacheTimerReset() {
     if (this._timerDisabled) return;
 
     this.resourceRecordCacheTimer?.cancel();

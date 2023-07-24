@@ -1,5 +1,4 @@
 import path from 'path';
-import * as utils from '../utils';
 
 interface SocketUtils {
   disableSocketMulticastAll(socketfd: number): boolean;
@@ -12,7 +11,7 @@ const prebuildPath = path.join(projectRoot, 'prebuild');
  * Try require on all prebuild targets first, then
  * try require on all npm targets second.
  */
- function requireBinding(targets: Array<string>): SocketUtils {
+function requireBinding(targets: Array<string>): SocketUtils {
   const prebuildTargets = targets.map((target) =>
     path.join(prebuildPath, `mdns-${target}.node`),
   );
@@ -58,8 +57,8 @@ switch (process.platform) {
     break;
   default:
     nativeBinding = {
-      disableSocketMulticastAll: () => false
-    }
+      disableSocketMulticastAll: () => false,
+    };
 }
 
 export default nativeBinding;

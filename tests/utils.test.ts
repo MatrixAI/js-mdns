@@ -1,4 +1,3 @@
-import type { Host } from '@/types';
 import * as utils from '@/utils';
 
 describe('utils', () => {

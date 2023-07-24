@@ -1,7 +1,7 @@
 #define NAPI_VERSION 3
 
-#include <node_api.h>
 #include <napi-macros.h>
+#include <node_api.h>
 
 #include "socketUtils.h"
 
@@ -14,6 +14,4 @@ NAPI_METHOD(disableSocketMulticastAll) {
   NAPI_RETURN_INT32(success);
 }
 
-NAPI_INIT() {
-  NAPI_EXPORT_FUNCTION(disableSocketMulticastAll);
-}
+NAPI_INIT() { NAPI_EXPORT_FUNCTION(disableSocketMulticastAll); }

@@ -12,56 +12,56 @@
  * to prevent `npm` from attempting to download unpublished packages.
  */
 
- const os = require('os');
- const childProcess = require('child_process');
- const packageJSON = require('../package.json');
+const os = require('os');
+const childProcess = require('child_process');
+const packageJSON = require('../package.json');
 
- const platform = os.platform();
+const platform = os.platform();
 
- /* eslint-disable no-console */
- async function main() {
-   console.error(
-     'Updating the package.json with optional native dependencies and package-lock.json',
-   );
-   const optionalDepsNative = [];
-   for (const key in packageJSON.optionalDependencies) {
-     if (key.startsWith(packageJSON.name)) {
-       optionalDepsNative.push(`${key}@${packageJSON.version}`);
-     }
-   }
-   if (optionalDepsNative.length > 0) {
-     const installArgs = [
-       'install',
-       '--ignore-scripts',
-       '--silent',
-       '--package-lock-only',
-       '--save-optional',
-       '--save-exact',
-       ...optionalDepsNative,
-     ];
-     console.error('Running npm install:');
-     console.error(['npm', ...installArgs].join(' '));
-     childProcess.execFileSync('npm', installArgs, {
-       stdio: ['inherit', 'inherit', 'inherit'],
-       windowsHide: true,
-       encoding: 'utf-8',
-       shell: platform === 'win32' ? true : false,
-     });
-     console.error('Running npm install again to update the package-lock.json:');
-     const installArgs_ = [
-       'install',
-       '--ignore-scripts',
-       '--silent',
-       '--package-lock-only',
-     ];
-     childProcess.execFileSync('npm', installArgs_, {
-       stdio: ['inherit', 'inherit', 'inherit'],
-       windowsHide: true,
-       encoding: 'utf-8',
-       shell: platform === 'win32' ? true : false,
-     });
-   }
- }
- /* eslint-enable no-console */
+/* eslint-disable no-console */
+async function main() {
+  console.error(
+    'Updating the package.json with optional native dependencies and package-lock.json',
+  );
+  const optionalDepsNative = [];
+  for (const key in packageJSON.optionalDependencies) {
+    if (key.startsWith(packageJSON.name)) {
+      optionalDepsNative.push(`${key}@${packageJSON.version}`);
+    }
+  }
+  if (optionalDepsNative.length > 0) {
+    const installArgs = [
+      'install',
+      '--ignore-scripts',
+      '--silent',
+      '--package-lock-only',
+      '--save-optional',
+      '--save-exact',
+      ...optionalDepsNative,
+    ];
+    console.error('Running npm install:');
+    console.error(['npm', ...installArgs].join(' '));
+    childProcess.execFileSync('npm', installArgs, {
+      stdio: ['inherit', 'inherit', 'inherit'],
+      windowsHide: true,
+      encoding: 'utf-8',
+      shell: platform === 'win32' ? true : false,
+    });
+    console.error('Running npm install again to update the package-lock.json:');
+    const installArgs_ = [
+      'install',
+      '--ignore-scripts',
+      '--silent',
+      '--package-lock-only',
+    ];
+    childProcess.execFileSync('npm', installArgs_, {
+      stdio: ['inherit', 'inherit', 'inherit'],
+      windowsHide: true,
+      encoding: 'utf-8',
+      shell: platform === 'win32' ? true : false,
+    });
+  }
+}
+/* eslint-enable no-console */
 
- void main();
+void main();

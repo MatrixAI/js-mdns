@@ -443,7 +443,7 @@ class MDNS extends EventTarget {
     // And we have to decide what we are doing here
   }
 
-  private advertise(
+  protected advertise(
     packet: Packet,
     advertisementKey: string,
     socket?: MulticastSocketInfo | Array<MulticastSocketInfo>,
@@ -477,7 +477,7 @@ class MDNS extends EventTarget {
   /**
    * If the socket is not provided, the message will be sent to all multicast sockets.
    */
-  private async sendMulticastPacket(
+  protected async sendMulticastPacket(
     packet: Packet,
     sockets?: MulticastSocketInfo | Array<MulticastSocketInfo>,
   ) {
@@ -497,7 +497,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async sendPacket(
+  protected async sendPacket(
     packet: Packet,
     sockets: SocketInfo | Array<SocketInfo>,
     address: Host,
@@ -521,7 +521,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private findSocketHost(addressHost: Host) {
+  protected findSocketHost(addressHost: Host) {
     let parsedAddress: IPv4 | IPv6 | undefined;
     let parsedFamily: 'IPv4' | 'IPv6' | undefined;
     let parsedNetworkInterfaceIndex: string | undefined;
@@ -560,7 +560,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async handleSocketMessage(
+  protected async handleSocketMessage(
     msg: Buffer,
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
@@ -621,7 +621,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async handleSocketMessageQuery(
+  protected async handleSocketMessageQuery(
     packet: Packet,
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
@@ -772,7 +772,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async handleSocketMessageResponse(
+  protected async handleSocketMessageResponse(
     packet: Packet,
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
@@ -788,7 +788,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private async processIncomingResourceRecords(
+  protected async processIncomingResourceRecords(
     resourceRecords: ResourceRecord[],
     rinfo: dgram.RemoteInfo,
     socket: dgram.Socket,
@@ -924,7 +924,7 @@ class MDNS extends EventTarget {
   }
 
   // We processed expired records here. Note that this also processes records of TTL 0, as they expire after 1 second as per spec.
-  private async processExpiredResourceRecords(
+  protected async processExpiredResourceRecords(
     resourceRecord: CachableResourceRecord,
   ) {
     const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecord);
@@ -937,7 +937,7 @@ class MDNS extends EventTarget {
     }
   }
 
-  private extractRelatedFdqns(
+  protected extractRelatedFdqns(
     resourceRecords: ResourceRecord | Array<ResourceRecord>,
   ): Array<Hostname> {
     if (!Array.isArray(resourceRecords)) {
@@ -973,7 +973,7 @@ class MDNS extends EventTarget {
     return relatedFdqns;
   }
 
-  private async handleSocketError(e: any, socket: dgram.Socket) {
+  protected async handleSocketError(e: any, socket: dgram.Socket) {
     throw new errors.ErrorMDNSSocket(
       `An error occurred on a socket that MDNS has bound to ${
         socket.address().address

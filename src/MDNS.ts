@@ -766,10 +766,6 @@ class MDNS extends EventTarget {
       rinfo,
       socket,
     );
-
-    if (packet.questions.length !== 0) {
-      await this.handleSocketMessageQuery(packet, rinfo, socket);
-    }
   }
 
   protected async processIncomingResourceRecords(

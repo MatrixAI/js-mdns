@@ -599,9 +599,9 @@ class MDNS extends EventTarget {
     const socketInfo = this.socketMap.get(socket);
     if (socketInfo == null) return;
     if (packet.flags.type !== PacketType.QUERY) return;
-    const answerResourceRecords: ResourceRecord[] = [];
-    const additionalResourceRecords: ResourceRecord[] = [];
-    const additionalQuestionRecords: QuestionRecord[] = [];
+    const answerResourceRecords: Array<ResourceRecord> = [];
+    const additionalResourceRecords: Array<ResourceRecord> = [];
+    const additionalQuestionRecords: Array<QuestionRecord> = [];
     const processedRowIs = new Set<number>();
     let hasHostRecordsBeenProcessed = false;
     let canResponseBeUnicast = false;
@@ -627,7 +627,7 @@ class MDNS extends EventTarget {
         utils.toServiceResourceRecords(
           [...this.localServices.values()],
           this._hostname,
-        ) as CachableResourceRecord[],
+        ) as Array<CachableResourceRecord>,
       );
     }
 
@@ -755,7 +755,7 @@ class MDNS extends EventTarget {
   }
 
   protected async processIncomingResourceRecords(
-    resourceRecords: ResourceRecord[],
+    resourceRecords: Array<ResourceRecord>,
     rinfo: RemoteInfo,
     socket: dgram.Socket,
   ) {
@@ -779,7 +779,7 @@ class MDNS extends EventTarget {
     const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecords);
 
     // Process the dirtied fdqns to figure out what questions still need to be asked.
-    const allRemainingQuestions: QuestionRecord[] = [];
+    const allRemainingQuestions: Array<QuestionRecord> = [];
     for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
       const partialService: Partial<Service> = {};
       const remainingQuestions: Map<QType, QuestionRecord> = new Map();

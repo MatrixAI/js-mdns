@@ -73,7 +73,9 @@ class ResourceRecordCache extends EventTarget {
   }
 
   @ready(new errors.ErrorCacheDestroyed())
-  public set(records: CachableResourceRecord | CachableResourceRecord[]): void {
+  public set(
+    records: CachableResourceRecord | Array<CachableResourceRecord>,
+  ): void {
     if (!Array.isArray(records)) {
       return this.set([records]);
     }
@@ -135,7 +137,7 @@ class ResourceRecordCache extends EventTarget {
   public delete(
     records:
       | (QuestionRecord | CachableResourceRecord)
-      | (QuestionRecord | CachableResourceRecord)[],
+      | Array<QuestionRecord | CachableResourceRecord>,
   ) {
     if (!Array.isArray(records)) {
       return this.delete([records]);
@@ -185,8 +187,8 @@ class ResourceRecordCache extends EventTarget {
   public where(
     records:
       | (QuestionRecord | CachableResourceRecord)
-      | (QuestionRecord | CachableResourceRecord)[],
-  ): number[] {
+      | Array<QuestionRecord | CachableResourceRecord>,
+  ): Array<number> {
     if (!Array.isArray(records)) {
       return this.where([records]);
     }
@@ -213,8 +215,8 @@ class ResourceRecordCache extends EventTarget {
   }
 
   @ready(new errors.ErrorCacheDestroyed())
-  public get(rowIs: number[]): CachableResourceRecord[] {
-    const resourceRecords: CachableResourceRecord[] = [];
+  public get(rowIs: Array<number>): Array<CachableResourceRecord> {
+    const resourceRecords: Array<CachableResourceRecord> = [];
     for (const rowI of rowIs) {
       const row = this.resourceRecordCache.getRow(rowI);
       if (row == null) continue;
@@ -227,8 +229,8 @@ class ResourceRecordCache extends EventTarget {
   public whereGet(
     records:
       | (QuestionRecord | CachableResourceRecord)
-      | (QuestionRecord | CachableResourceRecord)[],
-  ): CachableResourceRecord[] {
+      | Array<QuestionRecord | CachableResourceRecord>,
+  ): Array<CachableResourceRecord> {
     const allFoundRowIs = this.where(records);
     return this.get(allFoundRowIs);
   }
@@ -236,7 +238,7 @@ class ResourceRecordCache extends EventTarget {
   @ready(new errors.ErrorCacheDestroyed())
   public getHostnameRelatedResourceRecords(
     hostname: Hostname,
-  ): CachableResourceRecord[] {
+  ): Array<CachableResourceRecord> {
     const foundRowIs = this.resourceRecordCache.whereRows(
       ['relatedHostname'],
       [hostname],

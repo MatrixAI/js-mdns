@@ -131,11 +131,11 @@ function promise<T = void>(): PromiseDeconstructed<T> {
 
 // Default ResourceRecord ttl is 120 seconds
 function toHostResourceRecords(
-  hosts: Host[],
+  hosts: Array<Host>,
   hostname: Hostname,
   flush: boolean = false,
   ttl: number = 120,
-): StringRecord[] {
+): Array<StringRecord> {
   return hosts.map((host) => ({
     name: hostname,
     type: isIPv4(host) ? RType.A : RType.AAAA,
@@ -158,11 +158,11 @@ function isService(service: any): service is Service {
 
 // Default ResourceRecord ttl is 120 seconds
 function toServiceResourceRecords(
-  services: Service[],
+  services: Array<Service>,
   hostname: Hostname,
   flush: boolean = false,
   ttl: number = 120,
-): ResourceRecord[] {
+): Array<ResourceRecord> {
   return services.flatMap((service) => {
     const serviceDomain = `_${service.type}._${service.protocol}.local`;
     const fdqn = `${service.name}.${serviceDomain}`;

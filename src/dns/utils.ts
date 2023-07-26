@@ -83,7 +83,7 @@ const enum RClass { // RFC 1035 3.2.4.
   // incomplete list
 }
 
-function concatUInt8Array(...arrays: Uint8Array[]) {
+function concatUInt8Array(...arrays: Array<Uint8Array>) {
   const totalLength = arrays.reduce((acc, val) => acc + val.length, 0);
   const result = new Uint8Array(totalLength);
   let offset = 0;
@@ -176,9 +176,12 @@ function parseLabels(
 }
 
 // Revisit this later...
-function generateLabels(input: string, terminator: number[] = [0]): Uint8Array {
+function generateLabels(
+  input: string,
+  terminator: Array<number> = [0],
+): Uint8Array {
   const labels = input.split('.');
-  const encodedName: number[] = [];
+  const encodedName: Array<number> = [];
 
   for (const label of labels) {
     encodedName.push(label.length);
@@ -211,7 +214,7 @@ function parseIPv6(input: Uint8Array): Parsed<string> {
   if (input.length < 16) throw new errors.ErrorDNSParse('Invalid IPv6 address');
 
   const dv = new DataView(input.buffer, input.byteOffset);
-  const parts: string[] = [];
+  const parts: Array<string> = [];
 
   for (let i = 0; i < 16; i += 2) {
     const value = dv.getUint16(i, false).toString(16);
@@ -379,10 +382,10 @@ function parseQuestionRecords(
   input: Uint8Array,
   original: Uint8Array,
   qdcount: number = 1,
-): Parsed<QuestionRecord[]> {
+): Parsed<Array<QuestionRecord>> {
   let inputBuffer = input;
 
-  const questions: QuestionRecord[] = [];
+  const questions: Array<QuestionRecord> = [];
 
   while (inputBuffer.length !== 0 && questions.length < qdcount) {
     const { data, remainder } = parseQuestionRecord(inputBuffer, original);
@@ -428,7 +431,7 @@ function parseQuestionRecord(
   };
 }
 
-function generateQuestionRecords(questions: QuestionRecord[]): Uint8Array {
+function generateQuestionRecords(questions: Array<QuestionRecord>): Uint8Array {
   return concatUInt8Array(...questions.flatMap(generateQuestionRecord));
 }
 
@@ -454,10 +457,10 @@ function parseResourceRecords(
   input: Uint8Array,
   original: Uint8Array,
   rrcount: number = 1,
-): Parsed<ResourceRecord[]> {
+): Parsed<Array<ResourceRecord>> {
   let inputBuffer = input;
 
-  const records: ResourceRecord[] = [];
+  const records: Array<ResourceRecord> = [];
 
   while (inputBuffer.length !== 0 && records.length < rrcount) {
     const { data: resourceRecord, remainder } = parseResourceRecord(
@@ -603,7 +606,7 @@ function parseSRVRecordData(
   };
 }
 
-function generateResourceRecords(records: ResourceRecord[]): Uint8Array {
+function generateResourceRecords(records: Array<ResourceRecord>): Uint8Array {
   return concatUInt8Array(...records.flatMap(generateResourceRecord));
 }
 

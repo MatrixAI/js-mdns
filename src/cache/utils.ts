@@ -2,7 +2,7 @@ import type { CachableResourceRecord } from '@/dns';
 import type { CachableResourceRecordRow } from './types';
 import type { Hostname } from '@/types';
 
-function insertionSort<T>(arr: T[], compare: (a: T, b: T) => number) {
+function insertionSort<T>(arr: Array<T>, compare: (a: T, b: T) => number) {
   for (let i = 1; i < arr.length; i++) {
     const temp = arr[i];
     let j = i - 1;

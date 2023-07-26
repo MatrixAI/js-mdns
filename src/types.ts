@@ -51,7 +51,7 @@ type Service = {
   port: Port;
   txt?: Record<string, string>;
   hostname: Hostname;
-  hosts: Host[];
+  hosts: Array<Host>;
 };
 
 type NetworkAddress = {

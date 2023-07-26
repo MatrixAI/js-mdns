@@ -17,9 +17,9 @@ type Packet = {
   id: number;
   flags: PacketFlags;
   questions: Array<QuestionRecord>;
-  answers: ResourceRecord[];
-  authorities: ResourceRecord[];
-  additionals: ResourceRecord[];
+  answers: Array<ResourceRecord>;
+  authorities: Array<ResourceRecord>;
+  additionals: Array<ResourceRecord>;
 };
 
 type PacketHeader = {
@@ -88,7 +88,7 @@ type SRVRecordValue = {
   weight: number;
 };
 
-type OPTRecord = BaseResourceRecord<RType.OPT, any[]> & {
+type OPTRecord = BaseResourceRecord<RType.OPT, Array<any>> & {
   name: '0';
   ttl: 0;
   flush: false;
@@ -103,11 +103,11 @@ type NSECRecord = BaseResourceRecord<
   RType.NSEC,
   {
     nextDomainName: string;
-    rrTypeWindows: {
+    rrTypeWindows: Array<{
       windowId: number;
       bitmapSize: number;
-      RRTypes: RType[];
-    }[];
+      RRTypes: Array<RType>;
+    }>;
   }
 >;
 

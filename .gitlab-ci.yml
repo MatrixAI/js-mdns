@@ -124,7 +124,7 @@ build:dist:
   script:
     - >
       nix-shell --arg ci true --run $'
-      npm run build --verbose;
+      npm run build --ignore-scripts --verbose;
       '
   artifacts:
     when: always

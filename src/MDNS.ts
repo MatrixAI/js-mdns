@@ -255,29 +255,23 @@ class MDNS extends EventTarget {
             family === 'IPv6' ? networkAddress.scopeid : undefined,
           ]);
         }
-        try {
-          if (networkAddress.family === 'IPv4') {
-            this.socketHostTable.insertRow({
-              ...networkAddress,
-              family: 'IPv4',
-              networkInterfaceName,
-              parsedAddress: IPv4.fromString(address),
-              parsedMask: new IPv4Mask(netmask),
-            });
-          } else {
-            this.socketHostTable.insertRow({
-              ...networkAddress,
-              family: 'IPv6',
-              networkInterfaceName,
-              parsedAddress: IPv6.fromString(address),
-              parsedMask: new IPv6Mask(netmask),
-              scopeid: networkAddress.scopeid,
-            });
-          }
-        } catch (err) {
-          this.logger.warn(
-            `Parsing network interface address failed: ${address}`,
-          );
+        if (networkAddress.family === 'IPv4') {
+          this.socketHostTable.insertRow({
+            ...networkAddress,
+            family: 'IPv4',
+            networkInterfaceName,
+            parsedAddress: IPv4.fromString(address),
+            parsedMask: new IPv4Mask(netmask),
+          });
+        } else {
+          this.socketHostTable.insertRow({
+            ...networkAddress,
+            family: 'IPv6',
+            networkInterfaceName,
+            parsedAddress: IPv6.fromString(address),
+            parsedMask: new IPv6Mask(netmask),
+            scopeid: networkAddress.scopeid,
+          });
         }
       }
     }

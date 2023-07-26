@@ -82,8 +82,6 @@ check:test:
       coverage_report:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
-    paths:
-      - ./prebuild/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on feature commits and ignores version commits
@@ -158,6 +156,8 @@ build:linux:
       coverage_report:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
+    paths:
+      - ./prebuild/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on staging commits and ignores version commits
@@ -209,8 +209,6 @@ build:macos:
   variables:
     # Location node-gyp installed headers and static libraries
     npm_config_devdir: "${CI_PROJECT_DIR}/tmp/node-gyp"
-    # Produce universal binary
-    npm_config_arch: 'x64+arm64'
   image: macos-12-xcode-14
   script:
     - eval "$(brew shellenv)"
@@ -218,6 +216,8 @@ build:macos:
     - hash -r
     - npm install --ignore-scripts
     - export PATH="$(npm root)/.bin:$PATH"
+    - npm run prebuild --verbose -- --arch x64
+    - npm run prebuild --verbose -- --arch arm64
     - npm test -- --ci --coverage
   artifacts:
     when: always
@@ -227,6 +227,8 @@ build:macos:
       coverage_report:
         coverage_format: cobertura
         path: ./tmp/coverage/cobertura-coverage.xml
+    paths:
+      - ./prebuild/
   coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
   rules:
     # Runs on staging commits and ignores version commits

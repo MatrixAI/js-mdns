@@ -134,30 +134,39 @@ class MDNS extends EventTarget {
    * @throws {ErrorMDNSInterfaceRange} - If no valid interfaces have been found.
    */
   public async start({
-    port = 5353 as Port,
+    port = 5353,
     ipv6Only = false,
-    groups = ['224.0.0.251', 'ff02::fb'] as Array<Host>,
+    groups = ['224.0.0.251', 'ff02::fb'],
     hostname = utils.getHostname(),
     advertise = true,
     id = utils.getRandomPacketId(),
   }: {
-    port?: Port;
+    port?: number;
     ipv6Only?: boolean;
 
-    groups?: Array<Host>;
+    groups?: Array<string>;
     hostname?: string;
     advertise?: boolean;
     id?: number;
   }): Promise<void> {
-    if (groups.length < 1) {
-      throw new RangeError('Must have at least 1 multicast group');
+    if (!utils.isPort(port)) {
+      throw new RangeError('Port must be between 0 and 65535');
     }
+    if (groups.length < 1) {
+      throw new RangeError('There must be at least 1 multicast group');
+    }
+    for (const group of groups) {
+      if (!utils.isIPv4(group) && !utils.isIPv6(group)) {
+        throw new errors.ErrorMDNSInvalidMulticastAddress(`An invalid multicast group was provided: ${group}`);
+      }
+    }
+    const _groups = groups as Array<Host>;
 
     const sockets: Array<dgram.Socket> = [];
     const platform = utils.getPlatform();
     const multicastTTL = 255;
     // MDNS requires all hostnames to have a `.local` with it
-    hostname = (hostname + '.local') as Hostname;
+    const _hostname = (hostname + '.local') as Hostname;
     // DNS Packet ID must be a 16 bit unsigned integer
     id = id & 0xffff;
 
@@ -294,7 +303,7 @@ class MDNS extends EventTarget {
           ? ((socketHost + '%' + linkLocalInterfaceIndex) as Host)
           : socketHost;
 
-      for (const group of [...groups]) {
+      for (const group of _groups) {
         if (utils.isIPv4(group) && udpType !== 'udp4') continue;
         if (utils.isIPv6(group) && udpType !== 'udp6') continue;
         const linkLocalGroup =
@@ -361,8 +370,8 @@ class MDNS extends EventTarget {
 
     this.sockets = sockets;
     this._port = port;
-    this._groups = groups;
-    this._hostname = hostname as Hostname;
+    this._groups = _groups;
+    this._hostname = _hostname;
     this._unicast = unicast;
     this._id = id;
     this.localRecordCache = await ResourceRecordCache.createResourceRecordCache(
@@ -1036,10 +1045,13 @@ class MDNS extends EventTarget {
     name: string;
     type: string;
     protocol: 'udp' | 'tcp';
-    port: Port;
+    port: number;
     txt?: Record<string, string>;
     advertise?: boolean;
   }) {
+    if (!utils.isPort(port)) {
+      throw new RangeError('Port must be between 0 and 65535');
+    }
     const service: Service = {
       name,
       type,

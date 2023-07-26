@@ -3,6 +3,7 @@ import type {
   Host,
   Hostname,
   NetworkInterfaces,
+  Port,
   PromiseDeconstructed,
   Service,
 } from './types';
@@ -11,6 +12,13 @@ import type dgram from 'dgram';
 import os from 'os';
 import { IPv6, Validator } from 'ip-num';
 import { RType, RClass } from '@/dns';
+
+/**
+ * Is it a valid Port between 0 and 65535?
+ */
+function isPort(port: number): port is Port {
+  return port >= 0 && port <= 65535;
+}
 
 /**
  * Is it an IPv4 address?
@@ -231,6 +239,7 @@ function getRandomPacketId(): number {
 }
 
 export {
+  isPort,
   isIPv4,
   isIPv6,
   isIPv4MappedIPv6,

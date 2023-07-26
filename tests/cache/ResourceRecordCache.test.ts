@@ -1,5 +1,6 @@
 import type { CachableResourceRecord, QuestionRecord } from '@/dns';
 import type { MDNSCacheExpiredEvent } from '@/cache/events';
+import type { Host, Hostname } from '@/types';
 import { fc, testProp } from '@fast-check/jest';
 import { QClass, QType, RClass, RType } from '@/dns';
 import { ResourceRecordCache } from '@/cache';
@@ -23,11 +24,11 @@ describe(ResourceRecordCache.name, () => {
   test('single', async () => {
     const records: CachableResourceRecord[] = [
       {
-        name: 'test.local',
+        name: 'test.local' as Hostname,
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.1',
+        data: '192.168.0.1' as Host,
         ttl: 120,
       },
     ];
@@ -36,14 +37,14 @@ describe(ResourceRecordCache.name, () => {
   });
 
   test('multiple', () => {
-    const domain = 'test.local';
+    const domain = 'test.local' as Hostname;
     const records: CachableResourceRecord[] = [
       {
         name: domain,
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.1',
+        data: '192.168.0.1' as Host,
         ttl: 120,
       },
       {
@@ -51,7 +52,7 @@ describe(ResourceRecordCache.name, () => {
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.2',
+        data: '192.168.0.2' as Host,
         ttl: 120,
       },
     ];
@@ -60,14 +61,14 @@ describe(ResourceRecordCache.name, () => {
   });
 
   test('any', () => {
-    const domain = 'test.local';
+    const domain = 'test.local' as Hostname;
     const records: CachableResourceRecord[] = [
       {
         name: domain,
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.1',
+        data: '192.168.0.1' as Host,
         ttl: 120,
       },
       {
@@ -75,7 +76,7 @@ describe(ResourceRecordCache.name, () => {
         type: RType.AAAA,
         class: RClass.IN,
         flush: false,
-        data: '2001:0db8:85a3:0000:0000:8a2e:0370:7334',
+        data: '2001:0db8:85a3:0000:0000:8a2e:0370:7334' as Host,
         ttl: 120,
       },
     ];
@@ -107,14 +108,14 @@ describe(ResourceRecordCache.name, () => {
   );
 
   test('expiry', async () => {
-    const domain = 'test.local';
+    const domain = 'test.local' as Hostname;
     const records: CachableResourceRecord[] = [
       {
         name: domain,
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.2',
+        data: '192.168.0.2' as Host,
         ttl: 3,
       },
       {
@@ -122,7 +123,7 @@ describe(ResourceRecordCache.name, () => {
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.1',
+        data: '192.168.0.1' as Host,
         ttl: 1,
       },
       {
@@ -130,7 +131,7 @@ describe(ResourceRecordCache.name, () => {
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.3',
+        data: '192.168.0.3' as Host,
         ttl: 1,
       },
       {
@@ -138,7 +139,7 @@ describe(ResourceRecordCache.name, () => {
         type: RType.A,
         class: RClass.IN,
         flush: false,
-        data: '192.168.0.4',
+        data: '192.168.0.4' as Host,
         ttl: 2,
       },
     ];

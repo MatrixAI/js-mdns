@@ -1,8 +1,9 @@
 import type { CachableResourceRecord } from '@/dns';
+import type { Hostname } from '../types';
 
 type CachableResourceRecordRow = CachableResourceRecord & {
   timestamp: number;
-  relatedHostname?: string;
+  relatedHostname?: Hostname;
 };
 
 export type { CachableResourceRecordRow };

@@ -117,9 +117,9 @@ class ResourceRecordCache extends EventTarget {
         record.type === RType.PTR &&
         record.name !== '_services._dns-sd._udp.local'
       ) {
-        relatedHostname = record.data as Hostname;
+        relatedHostname = record.data;
       } else if (record.type === RType.SRV) {
-        relatedHostname = record.data.target as Hostname;
+        relatedHostname = record.data.target;
       }
 
       const rowI = this.resourceRecordCache.insertRow({

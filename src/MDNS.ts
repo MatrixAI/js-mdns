@@ -157,7 +157,9 @@ class MDNS extends EventTarget {
     }
     for (const group of groups) {
       if (!utils.isIPv4(group) && !utils.isIPv6(group)) {
-        throw new errors.ErrorMDNSInvalidMulticastAddress(`An invalid multicast group was provided: ${group}`);
+        throw new errors.ErrorMDNSInvalidMulticastAddress(
+          `An invalid multicast group was provided: ${group}`,
+        );
       }
     }
     const _groups = groups as Array<Host>;
@@ -810,8 +812,8 @@ class MDNS extends EventTarget {
           partialService.name = splitName.at(0);
           partialService.type = splitName.at(1)?.slice(1);
           partialService.protocol = splitName.at(2)?.slice(1) as any;
-          partialService.port = responseRecord.data.port as Port;
-          partialService.hostname = responseRecord.data.target as Hostname;
+          partialService.port = responseRecord.data.port;
+          partialService.hostname = responseRecord.data.target;
         }
       }
       if (partialService.hostname == null) {
@@ -842,7 +844,7 @@ class MDNS extends EventTarget {
           if (!Array.isArray(partialService.hosts)) {
             partialService.hosts = [];
           }
-          partialService.hosts.push(responseRecord.data as Host);
+          partialService.hosts.push(responseRecord.data);
         }
       }
       // We check if the service has been entirely built before dispatching the event that it has been created
@@ -1149,7 +1151,7 @@ class MDNS extends EventTarget {
     minDelay?: number;
     maxDelay?: number;
   }) {
-    const serviceDomain = `_${type}._${protocol}.local`;
+    const serviceDomain = `_${type}._${protocol}.local` as Hostname;
     const questionRecord: QuestionRecord = {
       name: serviceDomain,
       type: QType.PTR,

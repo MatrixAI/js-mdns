@@ -1,3 +1,4 @@
+import type { Hostname, Port } from '@/types';
 import { fc } from '@fast-check/jest';
 import {
   PacketOpCode,
@@ -17,6 +18,9 @@ const uint16Arb = fc.integer({ min: 0, max: 65535 }); // 16-Bit Unsigned Integer
 const packetOpCodeArb = fc.constantFrom(PacketOpCode.QUERY);
 const rCodeArb = fc.constantFrom(RCode.NoError);
 
+const domainArb = fc.domain() as fc.Arbitrary<Hostname>;
+const portArb = uint16Arb as fc.Arbitrary<Port>;
+
 // For all integers in set of values in QType/QClass
 const qTypeArb = fc.constantFrom(
   QType.A,
@@ -32,14 +36,14 @@ const qTypeArb = fc.constantFrom(
 const qClassArb = fc.constantFrom(QClass.ANY, QClass.IN);
 
 const questionRecordArb = fc.record({
-  name: fc.domain(),
+  name: domainArb,
   type: qTypeArb,
   class: qClassArb,
   unicast: fc.boolean(),
 });
 
 const aaaaRecordArb = fc.record({
-  name: fc.domain(),
+  name: domainArb,
   type: fc.constant(RType.AAAA),
   flush: fc.boolean(),
   class: fc.constant(RClass.IN),
@@ -52,7 +56,7 @@ const aaaaRecordArb = fc.record({
 });
 
 const aRecordArb = fc.record({
-  name: fc.domain(),
+  name: domainArb,
   type: fc.constant(RType.A),
   flush: fc.boolean(),
   class: fc.constant(RClass.IN),
@@ -61,16 +65,16 @@ const aRecordArb = fc.record({
 });
 
 const cnamePtrRecordArb = fc.record({
-  name: fc.domain(),
+  name: domainArb,
   type: fc.constantFrom(RType.CNAME, RType.PTR),
   flush: fc.boolean(),
   class: fc.constant(RClass.IN),
   ttl: uint32Arb,
-  data: fc.domain(),
+  data: domainArb,
 });
 
 const txtRecordArb = fc.record({
-  name: fc.domain(),
+  name: domainArb,
   type: fc.constant(RType.TXT),
   flush: fc.boolean(),
   class: fc.constant(RClass.IN),
@@ -84,7 +88,7 @@ const txtRecordArb = fc.record({
 });
 
 const srvRecordArb = fc.record({
-  name: fc.domain(),
+  name: domainArb,
   type: fc.constant(RType.SRV),
   flush: fc.boolean(),
   class: fc.constant(RClass.IN),
@@ -92,8 +96,8 @@ const srvRecordArb = fc.record({
   data: fc.record({
     priority: uint16Arb,
     weight: uint16Arb,
-    port: uint16Arb,
-    target: fc.domain(),
+    port: portArb,
+    target: domainArb,
   }),
 });
 
@@ -128,6 +132,8 @@ const packetArb = fc.record({
 });
 
 export {
+  domainArb,
+  portArb,
   packetOpCodeArb,
   rCodeArb,
   qTypeArb,

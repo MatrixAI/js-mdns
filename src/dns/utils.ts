@@ -10,6 +10,7 @@ import type {
   PacketHeader,
   CachableResourceRecord,
 } from './types';
+import type { Hostname, Port } from '../types';
 import { IPv6 } from 'ip-num';
 import * as errors from './errors';
 
@@ -123,7 +124,7 @@ function parseLabels(
   input: Uint8Array,
   original: Uint8Array,
   compression: boolean = true,
-): Parsed<string> {
+): Parsed<Hostname> {
   let currentIndex = 0;
   let label = '';
   let readBytes = 0;
@@ -172,12 +173,15 @@ function parseLabels(
     readBytes += 2;
   }
 
-  return { data: label.slice(0, -1), remainder: input.subarray(readBytes) };
+  return {
+    data: label.slice(0, -1) as Hostname,
+    remainder: input.subarray(readBytes),
+  };
 }
 
 // Revisit this later...
 function generateLabels(
-  input: string,
+  input: Hostname,
   terminator: Array<number> = [0],
 ): Uint8Array {
   const labels = input.split('.');
@@ -591,7 +595,7 @@ function parseSRVRecordData(
   const dv = new DataView(input.buffer, input.byteOffset);
   const priority = dv.getUint16(0, false);
   const weight = dv.getUint16(2, false);
-  const port = dv.getUint16(4, false);
+  const port = dv.getUint16(4, false) as Port;
 
   const target = parseLabels(input.subarray(6), original);
 
@@ -615,14 +619,12 @@ function generateResourceRecord(record: ResourceRecord): Uint8Array {
   const encodedName = generateLabels(record.name);
 
   let rdata: Uint8Array;
-  if (isStringResourceRecord(record)) {
-    if (record.type === RType.A) {
-      rdata = generateARecordData(record.data);
-    } else if (record.type === RType.AAAA) {
-      rdata = generateAAAARecordData(record.data);
-    } else {
-      rdata = generateLabels(record.data);
-    }
+  if (record.type === RType.A) {
+    rdata = generateARecordData(record.data);
+  } else if (record.type === RType.AAAA) {
+    rdata = generateAAAARecordData(record.data);
+  } else if (record.type === RType.CNAME || record.type === RType.PTR) {
+    rdata = generateLabels(record.data);
   } else if (record.type === RType.TXT) {
     rdata = generateTXTRecordData(record.data);
   } else if (record.type === RType.SRV) {

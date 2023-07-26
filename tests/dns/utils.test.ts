@@ -17,6 +17,7 @@ import {
   aaaaRecordArb,
   aRecordArb,
   cnamePtrRecordArb,
+  domainArb,
   packetArb,
   packetFlagsArb,
   questionRecordArb,
@@ -25,12 +26,12 @@ import {
 } from './utils';
 
 describe('dns packet parser/generator', () => {
-  testProp('labels', [fc.domain()], (domain) => {
+  testProp('labels', [domainArb], (domain) => {
     const generatedLabels = generateLabels(domain);
     const labels = parseLabels(generatedLabels, generatedLabels, false);
     expect(labels.data).toEqual(domain);
   });
-  testProp('labels pointer post-label', [fc.domain()], (domain) => {
+  testProp('labels pointer post-label', [domainArb], (domain) => {
     const generatedLabelsDomain = generateLabels(domain);
     const generatedLabels = concatUInt8Array(
       generatedLabelsDomain,
@@ -43,7 +44,7 @@ describe('dns packet parser/generator', () => {
     );
     expect(labels.data).toEqual(domain);
   });
-  testProp('labels pointer pre-label', [fc.domain()], (domain) => {
+  testProp('labels pointer pre-label', [domainArb], (domain) => {
     const generatedLabelsDomain = generateLabels(domain);
     const generatedLabels = concatUInt8Array(
       new Uint8Array([0xc0, 0x02]),
@@ -54,7 +55,7 @@ describe('dns packet parser/generator', () => {
   });
   testProp(
     'labels pointer terminated label',
-    [fc.domain(), fc.domain()],
+    [domainArb, domainArb],
     (domain1, domain2) => {
       const generatedLabelsDomain1 = generateLabels(domain1);
       const generatedLabelsDomain2 = generateLabels(domain2, [0xc0, 0x00]);
@@ -70,7 +71,7 @@ describe('dns packet parser/generator', () => {
       expect(labels.data).toEqual(domain2 + '.' + domain1);
     },
   );
-  testProp('labels pointer recursion', [fc.domain()], (domain) => {
+  testProp('labels pointer recursion', [domainArb], (domain) => {
     const generatedLabels = generateLabels(domain, [0xc0, 0x00]);
     const parser = () => {
       parseLabels(generatedLabels, generatedLabels, true);

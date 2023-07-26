@@ -1,3 +1,4 @@
+import type { Host, Hostname, Port } from '../types';
 import type {
   PacketOpCode,
   PacketType,
@@ -49,7 +50,7 @@ type PacketFlags = {
 };
 
 type QuestionRecord = {
-  name: string;
+  name: Hostname;
   type: QType;
   class: QClass;
   unicast?: boolean;
@@ -60,7 +61,7 @@ type CachableResourceRecord = StringRecord | TXTRecord | SRVRecord | NSECRecord;
 type ResourceRecord = CachableResourceRecord | OPTRecord;
 
 type BaseResourceRecord<T, D> = {
-  name: string;
+  name: Hostname;
   type: T;
   class: RClass;
 
@@ -70,10 +71,11 @@ type BaseResourceRecord<T, D> = {
   data: D;
 };
 
-type StringRecord = BaseResourceRecord<
-  RType.A | RType.AAAA | RType.CNAME | RType.PTR,
-  string
->;
+type HostRecord = BaseResourceRecord<RType.A | RType.AAAA, Host>;
+
+type HostnameRecord = BaseResourceRecord<RType.CNAME | RType.PTR, Hostname>;
+
+type StringRecord = HostRecord | HostnameRecord;
 
 type TXTRecord = BaseResourceRecord<RType.TXT, Record<string, string>>;
 
@@ -82,8 +84,8 @@ type TXTRecordValue = Record<string, string>;
 type SRVRecord = BaseResourceRecord<RType.SRV, SRVRecordValue>;
 
 type SRVRecordValue = {
-  port: number;
-  target: string;
+  port: Port;
+  target: Hostname;
   priority: number;
   weight: number;
 };
@@ -120,6 +122,8 @@ export type {
   CachableResourceRecord,
   ResourceRecord,
   BaseResourceRecord,
+  HostRecord,
+  HostnameRecord,
   StringRecord,
   TXTRecord,
   TXTRecordValue,

@@ -172,8 +172,9 @@ function toServiceResourceRecords(
   ttl: number = 120,
 ): Array<ResourceRecord> {
   return services.flatMap((service) => {
-    const serviceDomain = `_${service.type}._${service.protocol}.local`;
-    const fdqn = `${service.name}.${serviceDomain}`;
+    const serviceDomain =
+      `_${service.type}._${service.protocol}.local` as Hostname;
+    const fdqn = `${service.name}.${serviceDomain}` as Hostname;
     return [
       {
         name: fdqn,
@@ -205,7 +206,7 @@ function toServiceResourceRecords(
         data: fdqn,
       },
       {
-        name: '_services._dns-sd._udp.local',
+        name: '_services._dns-sd._udp.local' as Hostname,
         type: RType.PTR,
         class: RClass.IN,
         ttl: ttl,

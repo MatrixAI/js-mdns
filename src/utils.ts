@@ -60,7 +60,7 @@ function isIPv4MappedIPv6(host: string): host is Host {
  * This gets the network interfaces from Node's os.
  */
 function getNetworkInterfaces(): NetworkInterfaces {
-  return os.networkInterfaces();
+  return os.networkInterfaces() as NetworkInterfaces;
 }
 
 function getHostname(): Hostname {

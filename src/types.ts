@@ -55,10 +55,10 @@ type Service = {
 };
 
 type NetworkAddress = {
-  address: string;
+  address: Host;
   family: 'IPv4' | 'IPv6';
   internal: boolean;
-  netmask: string;
+  netmask: Host;
 } & (
   | {
       family: 'IPv4';
@@ -70,6 +70,13 @@ type NetworkAddress = {
 );
 
 type NetworkInterfaces = Record<string, Array<NetworkAddress> | undefined>;
+
+type RemoteInfo = {
+  address: Host;
+  family: 'IPv4' | 'IPv6';
+  port: Port;
+  size: number;
+};
 
 type BaseSocketInfo = {
   close: () => Promise<void>;
@@ -93,8 +100,8 @@ type SocketInfo = UnicastSocketInfo | MulticastSocketInfo;
 
 type SocketHostRow = {
   networkInterfaceName: string;
-  address: string;
-  netmask: string;
+  address: Host;
+  netmask: Host;
 } & (
   | {
       parsedAddress: IPv4;
@@ -120,6 +127,7 @@ export type {
   Service,
   NetworkAddress,
   NetworkInterfaces,
+  RemoteInfo,
   BaseSocketInfo,
   UnicastSocketInfo,
   MulticastSocketInfo,

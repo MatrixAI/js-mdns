@@ -7,6 +7,7 @@ import type {
   SocketInfo,
   MulticastSocketInfo,
   SocketHostRow,
+  RemoteInfo,
 } from './types';
 import type { MDNSCacheExpiredEvent } from './cache';
 import type {
@@ -60,7 +61,6 @@ class MDNS extends EventTarget {
     [['networkInterfaceName'], ['address']],
   );
   protected _port: Port;
-  protected _type: 'ipv4' | 'ipv6' | 'ipv4&ipv6';
   protected _groups: Array<Host>;
   protected _hostname: Hostname;
   protected _unicast: boolean = false;
@@ -91,15 +91,6 @@ class MDNS extends EventTarget {
   @ready(new errors.ErrorMDNSNotRunning())
   public get port() {
     return this._port;
-  }
-
-  /**
-   * Gets the type of socket
-   * It can be ipv4-only, ipv6-only or dual stack
-   */
-  @ready(new errors.ErrorMDNSNotRunning())
-  public get type(): 'ipv4' | 'ipv6' | 'ipv4&ipv6' {
-    return this._type;
   }
 
   /**
@@ -219,7 +210,7 @@ class MDNS extends EventTarget {
         unicastSocket.setMulticastTTL(0);
         unicastSocket.setMulticastLoopback(false);
         unicastSocket.addListener('message', (msg, rinfo) =>
-          this.handleSocketMessage(msg, rinfo, unicastSocket),
+          this.handleSocketMessage(msg, rinfo as RemoteInfo, unicastSocket),
         );
         unicastSocket.addListener('error', (err) =>
           this.handleSocketError(err, unicastSocket),
@@ -251,14 +242,14 @@ class MDNS extends EventTarget {
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
           socketHosts.push([
-            address as Host,
+            address,
             'udp6',
             networkInterfaceName,
             networkAddress.scopeid,
           ]);
         } else {
           socketHosts.push([
-            address as Host,
+            address,
             family === 'IPv4' ? 'udp4' : 'udp6',
             networkInterfaceName,
             family === 'IPv6' ? networkAddress.scopeid : undefined,
@@ -280,7 +271,7 @@ class MDNS extends EventTarget {
               networkInterfaceName,
               parsedAddress: IPv6.fromString(address),
               parsedMask: new IPv6Mask(netmask),
-              scopeid: networkAddress.scopeid as number,
+              scopeid: networkAddress.scopeid,
             });
           }
         } catch (err) {
@@ -356,7 +347,7 @@ class MDNS extends EventTarget {
         socket.removeListener('error', rejectErrorP);
 
         socket.addListener('message', (msg, rinfo) =>
-          this.handleSocketMessage(msg, rinfo, socket),
+          this.handleSocketMessage(msg, rinfo as RemoteInfo, socket),
         );
         socket.addListener('error', (err) =>
           this.handleSocketError(err, socket),
@@ -402,7 +393,7 @@ class MDNS extends EventTarget {
       );
       const addresses = hostRowIs.flatMap(
         (rowI) => this.socketHostTable.getRow(rowI)?.address ?? [],
-      ) as Host[];
+      );
       const hostResourceRecords = utils.toHostResourceRecords(
         addresses,
         this._hostname,
@@ -508,22 +499,17 @@ class MDNS extends EventTarget {
     let parsedAddress: IPv4 | IPv6 | undefined;
     let parsedFamily: 'IPv4' | 'IPv6' | undefined;
     let parsedNetworkInterfaceIndex: string | undefined;
-    try {
-      if (utils.isIPv4(addressHost)) {
-        parsedAddress = IPv4.fromString(addressHost);
-        parsedFamily = 'IPv4';
-      } else {
-        const [remoteAddress_, remoteNetworkInterfaceName_] = (
-          addressHost as string
-        ).split('%', 2);
-        parsedAddress = IPv6.fromString(remoteAddress_);
-        parsedNetworkInterfaceIndex = remoteNetworkInterfaceName_;
-        parsedFamily = 'IPv6';
-      }
-    } catch (err) {
-      return;
+    if (utils.isIPv4(addressHost)) {
+      parsedAddress = IPv4.fromString(addressHost);
+      parsedFamily = 'IPv4';
+    } else {
+      const [remoteAddress_, remoteNetworkInterfaceName_] = (
+        addressHost as string
+      ).split('%', 2);
+      parsedAddress = IPv6.fromString(remoteAddress_);
+      parsedNetworkInterfaceIndex = remoteNetworkInterfaceName_;
+      parsedFamily = 'IPv6';
     }
-
     for (const [_rowI, socketHost] of this.socketHostTable) {
       if (parsedFamily !== socketHost.family) continue;
       const localAddress = socketHost.parsedAddress;
@@ -546,7 +532,7 @@ class MDNS extends EventTarget {
 
   protected async handleSocketMessage(
     msg: Buffer,
-    rinfo: dgram.RemoteInfo,
+    rinfo: RemoteInfo,
     socket: dgram.Socket,
   ) {
     const socketInfo = this.socketMap.get(socket);
@@ -607,7 +593,7 @@ class MDNS extends EventTarget {
 
   protected async handleSocketMessageQuery(
     packet: Packet,
-    rinfo: dgram.RemoteInfo,
+    rinfo: RemoteInfo,
     socket: dgram.Socket,
   ) {
     const socketInfo = this.socketMap.get(socket);
@@ -624,7 +610,7 @@ class MDNS extends EventTarget {
 
     if (socketInfo.unicast) {
       networkInterfaceName = this.findSocketHost(
-        rinfo.address as Host,
+        rinfo.address,
       )?.networkInterfaceName;
     } else {
       networkInterfaceName = socketInfo?.networkInterfaceName;
@@ -646,7 +632,7 @@ class MDNS extends EventTarget {
     }
 
     const hostResourceRecords = utils.toHostResourceRecords(
-      ips as Host[],
+      ips,
       this._hostname,
     );
 
@@ -750,7 +736,7 @@ class MDNS extends EventTarget {
     };
     // If a query was received through unicast, we respond through unicast, otherwise we respond through multicast
     if (canResponseBeUnicast ?? socketInfo.unicast) {
-      await this.sendPacket(responsePacket, socketInfo, rinfo.address as Host);
+      await this.sendPacket(responsePacket, socketInfo, rinfo.address);
     } else {
       await this.sendMulticastPacket(responsePacket, socketInfo);
     }
@@ -758,7 +744,7 @@ class MDNS extends EventTarget {
 
   protected async handleSocketMessageResponse(
     packet: Packet,
-    rinfo: dgram.RemoteInfo,
+    rinfo: RemoteInfo,
     socket: dgram.Socket,
   ) {
     await this.processIncomingResourceRecords(
@@ -770,7 +756,7 @@ class MDNS extends EventTarget {
 
   protected async processIncomingResourceRecords(
     resourceRecords: ResourceRecord[],
-    rinfo: dgram.RemoteInfo,
+    rinfo: RemoteInfo,
     socket: dgram.Socket,
   ) {
     const socketInfo = this.socketMap.get(socket);
@@ -813,7 +799,7 @@ class MDNS extends EventTarget {
         ...remainingQuestions.values(),
       ]);
       for (const responseRecord of responseRecords) {
-        remainingQuestions.delete(responseRecord.type as number as QType);
+        remainingQuestions.delete(responseRecord.type as number);
         if (responseRecord.type === RType.TXT) {
           partialService.txt = responseRecord.data;
         } else if (responseRecord.type === RType.SRV) {
@@ -845,7 +831,7 @@ class MDNS extends EventTarget {
         ...remainingQuestions.values(),
       ]);
       for (const responseRecord of responseRecords) {
-        remainingQuestions.delete(responseRecord.type as number as QType);
+        remainingQuestions.delete(responseRecord.type as number);
         if (
           responseRecord.type === RType.A ||
           responseRecord.type === RType.AAAA
@@ -880,7 +866,7 @@ class MDNS extends EventTarget {
       // TODO: put dgram.Socket onto the socketHostMap
       // when a unicast response is received, we make sure to only send a multicast query back on the interface that received the unicast response.
       if (socketInfo.unicast) {
-        const socketHost = this.findSocketHost(rinfo.address as Host);
+        const socketHost = this.findSocketHost(rinfo.address);
         if (socketHost != null) {
           for (const socket of this.sockets) {
             const senderSocketInfo = this.socketMap.get(socket);
@@ -995,7 +981,7 @@ class MDNS extends EventTarget {
       );
       const addresses = hostRowIs.flatMap(
         (rowI) => this.socketHostTable.getRow(rowI)?.address ?? [],
-      ) as Host[];
+      );
       const hostResourceRecords = utils.toHostResourceRecords(
         addresses,
         this._hostname,

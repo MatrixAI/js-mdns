@@ -526,8 +526,8 @@ class MDNS extends EventTarget {
         continue;
       } else if (
         parsedNetworkInterfaceIndex != null &&
-        (parsedNetworkInterfaceIndex !== socketHost.networkInterfaceName ||
-          parseInt(parsedNetworkInterfaceIndex) !== (socketHost as any).scopeid)
+        parsedNetworkInterfaceIndex !== socketHost.networkInterfaceName &&
+        parseInt(parsedNetworkInterfaceIndex) !== (socketHost as any).scopeid
       ) {
         continue;
       }
@@ -569,10 +569,12 @@ class MDNS extends EventTarget {
           ) {
             return;
           } else if (
+            // If the remoteNetworkInterfaceIndex cannot be found, just handle the packet
             remoteNetworkInterfaceIndex != null &&
-            (remoteNetworkInterfaceIndex !== address.networkInterfaceName ||
-              parseInt(remoteNetworkInterfaceIndex) !==
-                (address as any).scopeid)
+            // If the remoteNetworkInterfaceIndex does not match both the scopeid and then networkInterfaceName
+            // do not handle the packet
+            remoteNetworkInterfaceIndex !== address.networkInterfaceName &&
+            parseInt(remoteNetworkInterfaceIndex) !== (address as any).scopeid
           ) {
             return;
           }

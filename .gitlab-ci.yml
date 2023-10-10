@@ -177,6 +177,8 @@ build:windows:
     npm_config_arch: "x64"
   before_script:
     - mkdir -Force "$CI_PROJECT_DIR/tmp"
+    # so that refreshenv will resolve to the correct Powershell alias
+    - Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
   script:
     - .\scripts\choco-install.ps1
     - refreshenv

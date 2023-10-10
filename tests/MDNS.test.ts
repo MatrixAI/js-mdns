@@ -1,5 +1,5 @@
-import type { MDNSServiceEvent } from '@/events';
 import type { Hostname, Port } from '@/types';
+import * as events from '@/events';
 import MDNS from '@/MDNS';
 
 describe(MDNS.name, () => {
@@ -28,18 +28,21 @@ describe(MDNS.name, () => {
     } as Parameters<typeof MDNS.prototype.registerService>[0];
     mdns2.registerService(service);
     await new Promise((resolve, reject) => {
-      mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
-        try {
-          expect(e.detail.name).toBe(service.name);
-          expect(e.detail.port).toBe(service.port);
-          expect(e.detail.protocol).toBe(service.protocol);
-          expect(e.detail.type).toBe(service.type);
-          expect(e.detail.hostname).toBe(mdns2Hostname + '.local');
-          resolve(null);
-        } catch (e) {
-          reject(e);
-        }
-      });
+      mdns1.addEventListener(
+        events.EventMDNSService.name,
+        (e: events.EventMDNSService) => {
+          try {
+            expect(e.detail.name).toBe(service.name);
+            expect(e.detail.port).toBe(service.port);
+            expect(e.detail.protocol).toBe(service.protocol);
+            expect(e.detail.type).toBe(service.type);
+            expect(e.detail.hostname).toBe(mdns2Hostname + '.local');
+            resolve(null);
+          } catch (e) {
+            reject(e);
+          }
+        },
+      );
     });
   });
   test('query', async () => {
@@ -66,18 +69,21 @@ describe(MDNS.name, () => {
     mdns2.registerService(service);
     mdns1.startQuery(service);
     await new Promise((resolve, reject) => {
-      mdns1.addEventListener('service', (e: MDNSServiceEvent) => {
-        try {
-          expect(e.detail.name).toBe(service.name);
-          expect(e.detail.port).toBe(service.port);
-          expect(e.detail.protocol).toBe(service.protocol);
-          expect(e.detail.type).toBe(service.type);
-          expect(e.detail.hostname).toBe(mdns2Hostname + '.local');
-          resolve(null);
-        } catch (e) {
-          reject(e);
-        }
-      });
+      mdns1.addEventListener(
+        events.EventMDNSService.name,
+        (e: events.EventMDNSService) => {
+          try {
+            expect(e.detail.name).toBe(service.name);
+            expect(e.detail.port).toBe(service.port);
+            expect(e.detail.protocol).toBe(service.protocol);
+            expect(e.detail.type).toBe(service.type);
+            expect(e.detail.hostname).toBe(mdns2Hostname + '.local');
+            resolve(null);
+          } catch (e) {
+            reject(e);
+          }
+        },
+      );
     });
   });
 });

@@ -17,14 +17,12 @@ import type {
   ResourceRecord,
 } from './dns';
 import * as dgram from 'dgram';
+import { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
 import { StartStop, ready } from '@matrixai/async-init/dist/StartStop';
+import { PromiseCancellable } from '@matrixai/async-cancellable';
 import { Timer } from '@matrixai/timer';
 import Logger from '@matrixai/logger';
 import Table from '@matrixai/table';
-import { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
-import { PromiseCancellable } from '@matrixai/async-cancellable';
-import * as utils from './utils';
-import * as errors from './errors';
 import {
   generatePacket,
   PacketOpCode,
@@ -35,13 +33,20 @@ import {
   RCode,
   RType,
 } from './dns';
-import { MDNSServiceEvent, MDNSServiceRemovedEvent } from './events';
 import { ResourceRecordCache } from './cache';
 import { isCachableResourceRecord } from './dns';
 import { socketUtils } from './native';
+import * as utils from './utils';
+import * as errors from './errors';
+import * as events from './events';
 
 interface MDNS extends StartStop {}
-@StartStop()
+@StartStop({
+  eventStart: events.EventMDNSStart,
+  eventStarted: events.EventMDNSStarted,
+  eventStop: events.EventMDNSStop,
+  eventStopped: events.EventMDNSStopped,
+})
 class MDNS extends EventTarget {
   protected logger: Logger;
   protected getNetworkInterfaces: () =>
@@ -851,7 +856,9 @@ class MDNS extends EventTarget {
       }
       // We check if the service has been entirely built before dispatching the event that it has been created
       if (utils.isService(partialService)) {
-        this.dispatchEvent(new MDNSServiceEvent({ detail: partialService }));
+        this.dispatchEvent(
+          new events.EventMDNSService({ detail: partialService }),
+        );
         this.networkServices.set(dirtiedServiceFdqn, partialService);
       }
       allRemainingQuestions.push(...remainingQuestions.values());
@@ -905,7 +912,9 @@ class MDNS extends EventTarget {
     for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
       const foundService = this.networkServices.get(dirtiedServiceFdqn);
       if (foundService == null) continue;
-      this.dispatchEvent(new MDNSServiceRemovedEvent({ detail: foundService }));
+      this.dispatchEvent(
+        new events.EventMDNSServiceRemoved({ detail: foundService }),
+      );
       this.networkServices.delete(dirtiedServiceFdqn);
     }
   }

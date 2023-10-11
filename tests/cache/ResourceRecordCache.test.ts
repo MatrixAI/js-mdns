@@ -1,5 +1,5 @@
 import type { CachableResourceRecord, QuestionRecord } from '@/dns';
-import type { MDNSCacheExpiredEvent } from '@/cache/events';
+import { EventResourceRecordCacheExpired } from '@/cache/events';
 import type { Host, Hostname } from '@/types';
 import { fc, testProp } from '@fast-check/jest';
 import { QClass, QType, RClass, RType } from '@/dns';
@@ -149,7 +149,7 @@ describe(ResourceRecordCache.name, () => {
     await new Promise((resolve, reject) => {
       let expiredIndex = 0;
       const sortedRecords = records.sort((a, b) => a.ttl - b.ttl);
-      cache.addEventListener('expired', (event: MDNSCacheExpiredEvent) => {
+      cache.addEventListener(EventResourceRecordCacheExpired.name, (event: EventResourceRecordCacheExpired) => {
         try {
           expect(event.detail.ttl).toEqual(sortedRecords[expiredIndex].ttl);
         } catch (e) {

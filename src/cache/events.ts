@@ -1,15 +1,17 @@
 import type { CachableResourceRecord } from '@/dns';
+import { AbstractEvent } from '@matrixai/events';
 
-class MDNSCacheExpiredEvent extends Event {
-  public detail: CachableResourceRecord;
-  constructor(
-    options: EventInit & {
-      detail: CachableResourceRecord;
-    },
-  ) {
-    super('expired', options);
-    this.detail = options.detail;
-  }
-}
+abstract class EventResourceRecordCache<T = null> extends AbstractEvent<T> {}
 
-export { MDNSCacheExpiredEvent };
+class EventResourceRecordCacheDestroy extends EventResourceRecordCache {}
+
+class EventResourceRecordCacheDestroyed extends EventResourceRecordCache {}
+
+class EventResourceRecordCacheExpired extends EventResourceRecordCache<CachableResourceRecord> {}
+
+export {
+  EventResourceRecordCache,
+  EventResourceRecordCacheDestroy,
+  EventResourceRecordCacheDestroyed,
+  EventResourceRecordCacheExpired,
+};

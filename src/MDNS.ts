@@ -9,7 +9,6 @@ import type {
   SocketHostRow,
   RemoteInfo,
 } from './types';
-import type { MDNSCacheExpiredEvent } from './cache';
 import type {
   CachableResourceRecord,
   Packet,
@@ -23,6 +22,7 @@ import { PromiseCancellable } from '@matrixai/async-cancellable';
 import { Timer } from '@matrixai/timer';
 import Logger from '@matrixai/logger';
 import Table from '@matrixai/table';
+import { EventResourceRecordCacheExpired } from './cache';
 import {
   generatePacket,
   PacketOpCode,
@@ -388,8 +388,8 @@ class MDNS {
     this.networkRecordCache =
       await ResourceRecordCache.createResourceRecordCache();
     this.networkRecordCache.addEventListener(
-      'expired',
-      (event: MDNSCacheExpiredEvent) =>
+      EventResourceRecordCacheExpired.name,
+      (event: EventResourceRecordCacheExpired) =>
         this.processExpiredResourceRecords(event.detail),
     );
 

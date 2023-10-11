@@ -15,6 +15,8 @@ class EventMDNSService extends EventMDNS<Service> {}
 
 class EventMDNSServiceRemoved extends EventMDNS<Service> {}
 
+class EventMDNSError extends EventMDNS<Error> {}
+
 export {
   EventMDNS,
   EventMDNSStart,
@@ -23,4 +25,5 @@ export {
   EventMDNSStopped,
   EventMDNSService,
   EventMDNSServiceRemoved,
+  EventMDNSError,
 };

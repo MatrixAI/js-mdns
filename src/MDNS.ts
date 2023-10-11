@@ -40,6 +40,8 @@ import * as utils from './utils';
 import * as errors from './errors';
 import * as events from './events';
 
+const taskCancelReason = Symbol('CancelTask');
+
 interface MDNS extends StartStop {}
 @StartStop({
   eventStart: events.EventMDNSStart,
@@ -47,7 +49,7 @@ interface MDNS extends StartStop {}
   eventStop: events.EventMDNSStop,
   eventStopped: events.EventMDNSStopped,
 })
-class MDNS extends EventTarget {
+class MDNS {
   protected logger: Logger;
   protected getNetworkInterfaces: () =>
     | NetworkInterfaces
@@ -83,7 +85,6 @@ class MDNS extends EventTarget {
       | PromiseLike<NetworkInterfaces>;
     logger?: Logger;
   } = {}) {
-    super();
     this.logger = logger ?? new Logger(this.constructor.name);
     this.getNetworkInterfaces = getNetworkInterfaces;
   }
@@ -437,21 +438,40 @@ class MDNS extends EventTarget {
       advertisement.cancel();
     }
 
-    const promise = new PromiseCancellable<void>(
-      async (resolve, reject, signal) => {
-        const rejectFn = (reason: any) => {
-          this.advertisements.delete(advertisementKey);
-          reject(reason);
-        };
-        const timer = new Timer(async () => {
-          await this.sendMulticastPacket(packet, socket).catch(rejectFn);
+    const abortController = new AbortController();
+    const promise = new PromiseCancellable<void>(async (resolve, reject) => {
+      await this.sendMulticastPacket(packet, socket).catch(reject);
+      if (abortController.signal.aborted) {
+        return resolve();
+      }
+      const timer = new Timer(
+        (timerSignal) => {
+          if (timerSignal.aborted) {
+            return resolve();
+          }
+          this.sendMulticastPacket(packet, socket).then(resolve, reject);
+        },
+        1000,
+        false,
+      );
+      abortController.signal.addEventListener(
+        'abort',
+        () => {
+          timer.cancel(taskCancelReason);
           resolve();
-        }, 1000);
-        signal.addEventListener('abort', () => {
-          timer.cancel('abort');
-          this.advertisements.delete(advertisementKey);
-        });
-        await this.sendMulticastPacket(packet, socket).catch(rejectFn);
+        },
+        { once: true },
+      );
+    }, abortController);
+
+    // Delete the advertisement key whether reject or resolve
+    promise.then(
+      () => {
+        this.advertisements.delete(advertisementKey);
+      },
+      (reason) => {
+        this.dispatchEvent(new events.EventMDNSError({ detail: reason }));
+        this.advertisements.delete(advertisementKey);
       },
     );
 
@@ -459,12 +479,15 @@ class MDNS extends EventTarget {
   }
 
   /**
-   * If the socket is not provided, the message will be sent to all multicast sockets.
+   * Sends a packet to the multicast groups
+   * @param packet - the packet to send
+   * @param sockets - If sockets is not provided, the message will be sent to all multicast sockets
+   * @throws {@link errors.ErrorMDNSSocketInvalidSendAddress}
    */
   protected async sendMulticastPacket(
     packet: Packet,
     sockets?: MulticastSocketInfo | Array<MulticastSocketInfo>,
-  ) {
+  ): Promise<void> {
     if (sockets == null) {
       const unicastSocketInfo = this.sockets.flatMap((s) => {
         const socketInfo = this.socketMap.get(s);
@@ -481,6 +504,13 @@ class MDNS extends EventTarget {
     }
   }
 
+  /**
+   * Sends a packet
+   * @param packet - the packet to send
+   * @param sockets - the sockets to send on
+   * @param address - the address to send to
+   * @throws {@link errors.ErrorMDNSSocketInvalidSendAddress}
+   */
   protected async sendPacket(
     packet: Packet,
     sockets: SocketInfo | Array<SocketInfo>,
@@ -956,13 +986,17 @@ class MDNS extends EventTarget {
   }
 
   protected async handleSocketError(e: any, socket: dgram.Socket) {
-    throw new errors.ErrorMDNSSocket(
-      `An error occurred on a socket that MDNS has bound to ${
-        socket.address().address
-      }`,
-      {
-        cause: e,
-      },
+    this.dispatchEvent(
+      new events.EventMDNSError({
+        detail: new errors.ErrorMDNSSocket(
+          `An error occurred on a socket that MDNS has bound to ${
+            socket.address().address
+          }`,
+          {
+            cause: e,
+          },
+        ),
+      }),
     );
   }
 
@@ -1182,33 +1216,47 @@ class MDNS extends EventTarget {
       authorities: [],
     };
 
-    const promise = new PromiseCancellable<void>(
-      async (_resolve, reject, signal) => {
-        const rejectFn = (reason: any) => {
-          this.queries.delete(serviceDomain);
-          reject(reason);
-        };
-        let delayMilis = minDelay * 1000;
-        const maxDelayMilis = maxDelay * 1000;
+    const abortController = new AbortController();
+    const promise = new PromiseCancellable<void>(async (resolve, reject) => {
+      await this.sendMulticastPacket(queryPacket).catch(reject);
+      if (abortController.signal.aborted) {
+        return resolve();
+      }
 
-        let timer: Timer;
+      let delayMilis = minDelay * 1000;
+      const maxDelayMilis = maxDelay * 1000;
 
-        const setTimer = () => {
-          timer = new Timer(async () => {
-            await this.sendMulticastPacket(queryPacket).catch(rejectFn);
-            setTimer();
-          }, delayMilis);
-          delayMilis *= 2;
-          if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
-        };
-        setTimer();
+      let timer: Timer;
 
-        signal.addEventListener('abort', () => {
-          timer.cancel('abort');
-          this.queries.delete(serviceDomain);
-        });
+      const setTimer = () => {
+        timer = new Timer(async (timerSignal) => {
+          if (timerSignal.aborted) {
+            return;
+          }
+          await this.sendMulticastPacket(queryPacket).catch(reject);
+          setTimer();
+        }, delayMilis);
+        delayMilis *= 2;
+        if (delayMilis > maxDelayMilis) delayMilis = maxDelayMilis;
+      };
+      setTimer();
+      abortController.signal.addEventListener(
+        'abort',
+        () => {
+          timer.cancel(taskCancelReason);
+          resolve();
+        },
+        { once: true },
+      );
+    }, abortController);
 
-        await this.sendMulticastPacket(queryPacket).catch(rejectFn);
+    promise.then(
+      () => {
+        this.queries.delete(serviceDomain);
+      },
+      (reason) => {
+        this.queries.delete(serviceDomain);
+        this.dispatchEvent(new events.EventMDNSError({ detail: reason }));
       },
     );
 

@@ -646,10 +646,7 @@ class MDNS {
     } catch (err) {
       return this.dispatchEvent(
         new events.EventMDNSError({
-          detail: new errors.ErrorMDNSPacketParse(
-            err.message,
-            { cause: err },
-          ),
+          detail: new errors.ErrorMDNSPacketParse(err.message, { cause: err }),
         }),
       );
     }

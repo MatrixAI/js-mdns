@@ -20,7 +20,6 @@ class ErrorMDNSInterfaceRange<T> extends ErrorMDNS<T> {
   static description = 'MDNS interface range error';
 }
 
-
 class ErrorMDNSPacket<T> extends ErrorMDNS<T> {
   static description = 'DNS Packet error';
 }
@@ -35,7 +34,6 @@ class ErrorMDNSPacketGenerate<T> extends ErrorMDNSPacket<T> {
 class ErrorMDNSSocket<T> extends ErrorMDNS<T> {
   static description = 'MDNS socket error';
 }
-
 
 class ErrorMDNSSocketInternal<T> extends ErrorMDNS<T> {
   static description = 'MDNS socket internal error';
@@ -53,9 +51,7 @@ class ErrorMDNSSocketInvalidReceiveAddress<T> extends ErrorMDNSSocket<T> {
   static description = 'MDNS cannot correctly parse the receive address';
 }
 
-class ErrorMDNSSocketSendFailed<T> extends ErrorMDNSSocket<T> {
-
-}
+class ErrorMDNSSocketSendFailed<T> extends ErrorMDNSSocket<T> {}
 
 export {
   ErrorMDNS,
@@ -71,5 +67,5 @@ export {
   ErrorMDNSSocketInvalidBindAddress,
   ErrorMDNSSocketInvalidSendAddress,
   ErrorMDNSSocketInvalidReceiveAddress,
-  ErrorMDNSSocketSendFailed
+  ErrorMDNSSocketSendFailed,
 };

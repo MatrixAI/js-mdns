@@ -483,6 +483,7 @@ class MDNS {
    * @param packet - the packet to send
    * @param sockets - If sockets is not provided, the message will be sent to all multicast sockets
    * @throws {@link errors.ErrorMDNSSocketInvalidSendAddress}
+   * @throws {@link errors.ErrorMDNSSocketSendFailed}
    */
   protected async sendMulticastPacket(
     packet: Packet,
@@ -510,6 +511,7 @@ class MDNS {
    * @param sockets - the sockets to send on
    * @param address - the address to send to
    * @throws {@link errors.ErrorMDNSSocketInvalidSendAddress}
+   * @throws {@link errors.ErrorMDNSSocketSendFailed}
    */
   protected async sendPacket(
     packet: Packet,
@@ -524,13 +526,25 @@ class MDNS {
       try {
         await socketInfo.send(message, this._port, address);
       } catch (e) {
-        if (e.code === 'ECANCELED') return;
-        throw new errors.ErrorMDNSSocketInvalidSendAddress(
-          `Could not send packet to ${address}`,
-          {
-            cause: e,
-          },
-        );
+        switch (e.code) {
+          case 'ECANCELED':
+            return;
+          case 'ENOTFOUND':
+          case 'EAI_ADDRFAMILY':
+            throw new errors.ErrorMDNSSocketInvalidSendAddress(
+              `Could not send packet to ${address}`,
+              {
+                cause: e,
+              },
+            );
+          default:
+            throw new errors.ErrorMDNSSocketSendFailed(
+              `Could not send packet to ${address}`,
+              {
+                cause: e,
+              },
+            );
+        }
       }
     }
   }
@@ -614,8 +628,15 @@ class MDNS {
             return;
           }
         }
-      } catch (_err) {
-        this.logger.warn(`Parsing remote address failed: ${rinfo.address}`);
+      } catch (err) {
+        this.dispatchEvent(
+          new events.EventMDNSError({
+            detail: new errors.ErrorMDNSSocketInvalidReceiveAddress(
+              `Parsing remote address failed: ${rinfo.address}`,
+              { cause: err },
+            ),
+          }),
+        );
       }
     }
 
@@ -623,7 +644,14 @@ class MDNS {
     try {
       packet = parsePacket(msg);
     } catch (err) {
-      return;
+      return this.dispatchEvent(
+        new events.EventMDNSError({
+          detail: new errors.ErrorMDNSPacketParse(
+            err.message,
+            { cause: err },
+          ),
+        }),
+      );
     }
     if (packet.id === this._id) return;
     if (packet.flags.type === PacketType.QUERY) {
@@ -988,7 +1016,7 @@ class MDNS {
   protected async handleSocketError(e: any, socket: dgram.Socket) {
     this.dispatchEvent(
       new events.EventMDNSError({
-        detail: new errors.ErrorMDNSSocket(
+        detail: new errors.ErrorMDNSSocketInternal(
           `An error occurred on a socket that MDNS has bound to ${
             socket.address().address
           }`,

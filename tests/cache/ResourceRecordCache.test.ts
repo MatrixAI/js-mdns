@@ -1,7 +1,7 @@
 import type { CachableResourceRecord, QuestionRecord } from '@/dns';
-import { EventResourceRecordCacheExpired } from '@/cache/events';
 import type { Host, Hostname } from '@/types';
 import { fc, testProp } from '@fast-check/jest';
+import { EventResourceRecordCacheExpired } from '@/cache/events';
 import { QClass, QType, RClass, RType } from '@/dns';
 import { ResourceRecordCache } from '@/cache';
 import { resourceRecordArb } from '../dns/utils';
@@ -149,17 +149,20 @@ describe(ResourceRecordCache.name, () => {
     await new Promise((resolve, reject) => {
       let expiredIndex = 0;
       const sortedRecords = records.sort((a, b) => a.ttl - b.ttl);
-      cache.addEventListener(EventResourceRecordCacheExpired.name, (event: EventResourceRecordCacheExpired) => {
-        try {
-          expect(event.detail.ttl).toEqual(sortedRecords[expiredIndex].ttl);
-        } catch (e) {
-          reject(e);
-        }
-        if (expiredIndex === sortedRecords.length - 1) {
-          resolve(null);
-        }
-        expiredIndex++;
-      });
+      cache.addEventListener(
+        EventResourceRecordCacheExpired.name,
+        (event: EventResourceRecordCacheExpired) => {
+          try {
+            expect(event.detail.ttl).toEqual(sortedRecords[expiredIndex].ttl);
+          } catch (e) {
+            reject(e);
+          }
+          if (expiredIndex === sortedRecords.length - 1) {
+            resolve(null);
+          }
+          expiredIndex++;
+        },
+      );
     });
   });
 });

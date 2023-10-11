@@ -6,12 +6,15 @@ import { Timer } from '@matrixai/timer';
 import Table from '@matrixai/table';
 import canonicalize from 'canonicalize';
 import { QClass, QType, RType } from '@/dns';
-import { MDNSCacheExpiredEvent } from './events';
+import * as events from './events';
 import * as utils from './utils';
 import * as errors from './errors';
 
 interface ResourceRecordCache extends CreateDestroy {}
-@CreateDestroy()
+@CreateDestroy({
+  eventDestroy: events.EventResourceRecordCacheDestroy,
+  eventDestroyed: events.EventResourceRecordCacheDestroyed,
+})
 class ResourceRecordCache extends EventTarget {
   protected resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
     ['name', 'type', 'class', 'data', 'ttl', 'relatedHostname', 'timestamp'],
@@ -299,7 +302,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimer = new Timer(
       async () => {
         this.dispatchEvent(
-          new MDNSCacheExpiredEvent({
+          new events.EventResourceRecordCacheExpired({
             detail: utils.fromCachableResourceRecordRow(record),
           }),
         );

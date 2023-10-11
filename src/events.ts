@@ -1,27 +1,40 @@
 import type { Service } from './types';
+import type {
+  ErrorMDNSPacketParse,
+  ErrorMDNSSocketInternal,
+  ErrorMDNSSocketInvalidReceiveAddress,
+  ErrorMDNSSocketInvalidSendAddress,
+} from './errors';
+import { AbstractEvent } from '@matrixai/events';
 
-class MDNSServiceEvent extends Event {
-  public detail: Service;
-  constructor(
-    options: EventInit & {
-      detail: Service;
-    },
-  ) {
-    super('service', options);
-    this.detail = options.detail;
-  }
-}
+abstract class EventMDNS<T = null> extends AbstractEvent<T> {}
 
-class MDNSServiceRemovedEvent extends Event {
-  public detail: Service;
-  constructor(
-    options: EventInit & {
-      detail: Service;
-    },
-  ) {
-    super('service-removed', options);
-    this.detail = options.detail;
-  }
-}
+class EventMDNSStart extends EventMDNS {}
 
-export { MDNSServiceEvent, MDNSServiceRemovedEvent };
+class EventMDNSStarted extends EventMDNS {}
+
+class EventMDNSStop extends EventMDNS {}
+
+class EventMDNSStopped extends EventMDNS {}
+
+class EventMDNSService extends EventMDNS<Service> {}
+
+class EventMDNSServiceRemoved extends EventMDNS<Service> {}
+
+class EventMDNSError extends EventMDNS<
+  | ErrorMDNSPacketParse<unknown>
+  | ErrorMDNSSocketInternal<unknown>
+  | ErrorMDNSSocketInvalidSendAddress<unknown>
+  | ErrorMDNSSocketInvalidReceiveAddress<unknown>
+> {}
+
+export {
+  EventMDNS,
+  EventMDNSStart,
+  EventMDNSStarted,
+  EventMDNSStop,
+  EventMDNSStopped,
+  EventMDNSService,
+  EventMDNSServiceRemoved,
+  EventMDNSError,
+};

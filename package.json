@@ -37,9 +37,10 @@
   },
   "dependencies": {
     "@matrixai/async-cancellable": "^1.1.1",
-    "@matrixai/async-init": "^1.8.4",
+    "@matrixai/async-init": "^1.10.0",
     "@matrixai/contexts": "^1.1.0",
     "@matrixai/errors": "^1.1.7",
+    "@matrixai/events": "^3.2.0",
     "@matrixai/logger": "^3.1.0",
     "@matrixai/table": "^1.2.0",
     "@matrixai/timer": "^1.1.1",
@@ -76,7 +77,7 @@
     "typescript": "^4.9.3"
   },
   "engines": {
-    "node": "^18.15.0",
+    "node": ">=19.0.0",
     "msvs": "2019"
   }
 }

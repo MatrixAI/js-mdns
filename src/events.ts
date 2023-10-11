@@ -4,6 +4,7 @@ import type {
   ErrorMDNSSocketInternal,
   ErrorMDNSSocketInvalidReceiveAddress,
   ErrorMDNSSocketInvalidSendAddress,
+  ErrorMDNSSocketSendFailed,
 } from './errors';
 import { AbstractEvent } from '@matrixai/events';
 
@@ -26,6 +27,7 @@ class EventMDNSError extends EventMDNS<
   | ErrorMDNSSocketInternal<unknown>
   | ErrorMDNSSocketInvalidSendAddress<unknown>
   | ErrorMDNSSocketInvalidReceiveAddress<unknown>
+  | ErrorMDNSSocketSendFailed<unknown>
 > {}
 
 export {

@@ -32,7 +32,13 @@ type Host = Opaque<'Host', string>;
 /**
  * Hostnames are resolved to IP addresses
  */
-type Hostname = Opaque<'Hostname', string>;
+type Hostname = Opaque<'Hostname', string> | FDQN;
+
+/**
+ * FDQNs are in the format `{service.name}._${service.type}._${service.protocol}.local`.
+ * FDQNs are also Hostnames.
+ */
+type FDQN = Opaque<'FDQN', string>;
 
 /**
  * Ports are numbers from 0 to 65535
@@ -122,6 +128,7 @@ export type {
   PromiseDeconstructed,
   Host,
   Hostname,
+  FDQN,
   Port,
   Address,
   Service,

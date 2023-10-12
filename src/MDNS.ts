@@ -8,6 +8,7 @@ import type {
   MulticastSocketInfo,
   SocketHostRow,
   RemoteInfo,
+  FDQN,
 } from './types';
 import type {
   CachableResourceRecord,
@@ -57,10 +58,10 @@ class MDNS {
 
   protected localRecordCache: ResourceRecordCache;
   protected localRecordCacheDirty = true;
-  protected _localServices: Map<Hostname, Service> = new Map();
+  protected _localServices: Map<FDQN, Service> = new Map();
 
   protected networkRecordCache: ResourceRecordCache;
-  protected _networkServices: Map<Hostname, Service> = new Map();
+  protected _networkServices: Map<FDQN, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<dgram.Socket, SocketInfo> = new WeakMap();
   protected socketHostTable: Table<SocketHostRow> = new Table(
@@ -140,7 +141,7 @@ class MDNS {
    * The Key is a FDQN.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get localServices(): ReadonlyMap<Hostname, Service> {
+  public get localServices(): ReadonlyMap<FDQN, Service> {
     return this._localServices;
   }
 
@@ -149,7 +150,7 @@ class MDNS {
    * The Key is a FDQN.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get networkServices(): ReadonlyMap<Hostname, Service> {
+  public get networkServices(): ReadonlyMap<FDQN, Service> {
     return this._networkServices;
   }
 
@@ -1003,22 +1004,22 @@ class MDNS {
 
   protected extractRelatedFdqns(
     resourceRecords: ResourceRecord | Array<ResourceRecord>,
-  ): Array<Hostname> {
+  ): Array<FDQN> {
     if (!Array.isArray(resourceRecords)) {
       return this.extractRelatedFdqns([resourceRecords]);
     }
-    const relatedFdqns: Array<Hostname> = [];
+    const relatedFdqns: Array<FDQN> = [];
     for (const resourceRecord of resourceRecords) {
       if (
         resourceRecord.type === RType.SRV ||
         resourceRecord.type === RType.TXT
       ) {
-        relatedFdqns.push(resourceRecord.name as Hostname);
+        relatedFdqns.push(resourceRecord.name as FDQN);
       } else if (
         resourceRecord.type === RType.PTR &&
         resourceRecord.name !== '_services._dns-sd._udp.local'
       ) {
-        relatedFdqns.push(resourceRecord.data as Hostname);
+        relatedFdqns.push(resourceRecord.data as FDQN);
       } else if (
         resourceRecord.type === RType.A ||
         resourceRecord.type === RType.AAAA
@@ -1029,7 +1030,7 @@ class MDNS {
           );
         for (const relatedResourceRecord of relatedResourceRecords) {
           if (relatedResourceRecord.type === RType.SRV) {
-            relatedFdqns.push(relatedResourceRecord.name as Hostname);
+            relatedFdqns.push(relatedResourceRecord.name as FDQN);
           }
         }
       }
@@ -1160,9 +1161,7 @@ class MDNS {
       hostname: this._hostname,
       hosts: [],
     };
-    const serviceDomain =
-      `_${service.type}._${service.protocol}.local` as Hostname;
-    const fdqn = `${service.name}.${serviceDomain}` as Hostname;
+    const fdqn = utils.toFdqn(service);
 
     this._localServices.set(fdqn, service);
     this.localRecordCacheDirty = true;
@@ -1200,8 +1199,11 @@ class MDNS {
     type: string;
     protocol: 'udp' | 'tcp';
   }) {
-    const serviceDomain = `_${type}._${protocol}.local` as Hostname;
-    const fdqn = `${name}.${serviceDomain}` as Hostname;
+    const fdqn = utils.toFdqn({
+      name,
+      type,
+      protocol,
+    });
 
     const foundService = this._localServices.get(fdqn);
     if (foundService == null) return;
@@ -1248,7 +1250,10 @@ class MDNS {
     minDelay?: number;
     maxDelay?: number;
   }) {
-    const serviceDomain = `_${type}._${protocol}.local` as Hostname;
+    const serviceDomain = utils.toServiceDomain({
+      type,
+      protocol,
+    });
     const questionRecord: QuestionRecord = {
       name: serviceDomain,
       type: QType.PTR,
@@ -1329,7 +1334,10 @@ class MDNS {
     type: string;
     protocol: 'udp' | 'tcp';
   }) {
-    const serviceDomain = `_${type}._${protocol}.local`;
+    const serviceDomain = utils.toServiceDomain({
+      type,
+      protocol,
+    });
     this.queries.get(serviceDomain)?.cancel();
   }
 }

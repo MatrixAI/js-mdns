@@ -1,5 +1,6 @@
 import type {
   Callback,
+  FDQN,
   Host,
   Hostname,
   NetworkInterfaces,
@@ -239,6 +240,47 @@ function getRandomPacketId(): number {
   return Math.floor(Math.random() * 65535);
 }
 
+function toServiceDomain({
+  type,
+  protocol,
+}: {
+  type: string;
+  protocol: 'udp' | 'tcp';
+}): Hostname {
+  return `_${type}._${protocol}.local` as Hostname;
+}
+
+function toFdqn({
+  name,
+  type,
+  protocol,
+  serviceDomain,
+}: {
+  name: string;
+} & (
+  | {
+      type: string;
+      protocol: 'udp' | 'tcp';
+      serviceDomain?: undefined;
+    }
+  | {
+      type?: undefined;
+      protocol?: undefined;
+      serviceDomain: Hostname;
+    }
+)): FDQN {
+  let serviceDomain_: Hostname | undefined;
+  if (serviceDomain == null) {
+    serviceDomain_ = toServiceDomain({
+      type,
+      protocol,
+    });
+  } else {
+    serviceDomain_ = serviceDomain;
+  }
+  return `${name}.${serviceDomain_}` as FDQN;
+}
+
 export {
   isPort,
   isIPv4,
@@ -254,4 +296,6 @@ export {
   toServiceResourceRecords,
   bindSocket,
   getRandomPacketId,
+  toServiceDomain,
+  toFdqn,
 };

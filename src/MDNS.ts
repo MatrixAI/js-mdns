@@ -57,10 +57,10 @@ class MDNS {
 
   protected localRecordCache: ResourceRecordCache;
   protected localRecordCacheDirty = true;
-  protected localServices: Map<Hostname, Service> = new Map();
+  protected _localServices: Map<Hostname, Service> = new Map();
 
   protected networkRecordCache: ResourceRecordCache;
-  protected networkServices: Map<Hostname, Service> = new Map();
+  protected _networkServices: Map<Hostname, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<dgram.Socket, SocketInfo> = new WeakMap();
   protected socketHostTable: Table<SocketHostRow> = new Table(
@@ -109,6 +109,15 @@ class MDNS {
   }
 
   /**
+   * Gets the unicast flag.
+   * This will be true if a socket is deemed able to receive unicast responses.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get unicast(): boolean {
+    return this._unicast;
+  }
+
+  /**
    * Gets the multicast hostname this socket is bound to.
    * This will always end in `.local`.
    */
@@ -118,12 +127,30 @@ class MDNS {
   }
 
   /**
-   * Gets the unicast flag.
-   * This will be true if a socket is deemed able to receive unicast responses.
+   * Gets the id used for DNS packets.
+   * This is 16 bit.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get unicast(): string {
-    return this._hostname;
+  public get id(): number {
+    return this._id;
+  }
+
+  /**
+   * Returns a Map of services that you have registered.
+   * The Key is a FDQN.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get localServices(): ReadonlyMap<Hostname, Service> {
+    return this._localServices;
+  }
+
+  /**
+   * Returns a Map of services on the network.
+   * The Key is a FDQN.
+   */
+  @ready(new errors.ErrorMDNSNotRunning())
+  public get networkServices(): ReadonlyMap<Hostname, Service> {
+    return this._networkServices;
   }
 
   /**
@@ -692,7 +719,7 @@ class MDNS {
       this.localRecordCache.clear();
       this.localRecordCache.set(
         utils.toServiceResourceRecords(
-          [...this.localServices.values()],
+          [...this._localServices.values()],
           this._hostname,
         ) as Array<CachableResourceRecord>,
       );
@@ -914,7 +941,7 @@ class MDNS {
         this.dispatchEvent(
           new events.EventMDNSService({ detail: partialService }),
         );
-        this.networkServices.set(dirtiedServiceFdqn, partialService);
+        this._networkServices.set(dirtiedServiceFdqn, partialService);
       }
       allRemainingQuestions.push(...remainingQuestions.values());
     }
@@ -965,12 +992,12 @@ class MDNS {
     const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecord);
 
     for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
-      const foundService = this.networkServices.get(dirtiedServiceFdqn);
+      const foundService = this._networkServices.get(dirtiedServiceFdqn);
       if (foundService == null) continue;
       this.dispatchEvent(
         new events.EventMDNSServiceRemoved({ detail: foundService }),
       );
-      this.networkServices.delete(dirtiedServiceFdqn);
+      this._networkServices.delete(dirtiedServiceFdqn);
     }
   }
 
@@ -1042,7 +1069,7 @@ class MDNS {
 
     // Send the goodbye packet
     const serviceResourceRecords = utils.toServiceResourceRecords(
-      [...this.localServices.values()],
+      [...this._localServices.values()],
       this._hostname,
       false,
       0,
@@ -1081,9 +1108,9 @@ class MDNS {
     // Clear Services and Cache
     await this.localRecordCache.destroy();
     this.localRecordCacheDirty = true;
-    this.localServices.clear();
+    this._localServices.clear();
     await this.networkRecordCache.destroy();
-    this.networkServices.clear();
+    this._networkServices.clear();
 
     // Close all Sockets
     for (const socket of this.sockets) {
@@ -1137,7 +1164,7 @@ class MDNS {
       `_${service.type}._${service.protocol}.local` as Hostname;
     const fdqn = `${service.name}.${serviceDomain}` as Hostname;
 
-    this.localServices.set(fdqn, service);
+    this._localServices.set(fdqn, service);
     this.localRecordCacheDirty = true;
 
     if (!advertise) return;
@@ -1176,10 +1203,10 @@ class MDNS {
     const serviceDomain = `_${type}._${protocol}.local` as Hostname;
     const fdqn = `${name}.${serviceDomain}` as Hostname;
 
-    const foundService = this.localServices.get(fdqn);
+    const foundService = this._localServices.get(fdqn);
     if (foundService == null) return;
 
-    this.localServices.delete(fdqn);
+    this._localServices.delete(fdqn);
     this.localRecordCacheDirty = true;
     const advertisePacket: Packet = {
       id: this._id,

@@ -942,8 +942,7 @@ class MDNS {
           if (host.startsWith('fe80')) {
             if (remoteNetworkInterfaceIndex != null) {
               host = `${host}%${remoteNetworkInterfaceIndex}` as Host;
-            }
-            else {
+            } else {
               continue;
             }
           }

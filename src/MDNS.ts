@@ -939,8 +939,13 @@ class MDNS {
             partialService.hosts = [];
           }
           let host = responseRecord.data;
-          if (host.startsWith('fe80:') && remoteNetworkInterfaceIndex != null) {
-            host = `${host}%${remoteNetworkInterfaceIndex}` as Host;
+          if (host.startsWith('fe80')) {
+            if (remoteNetworkInterfaceIndex != null) {
+              host = `${host}%${remoteNetworkInterfaceIndex}` as Host;
+            }
+            else {
+              continue;
+            }
           }
           partialService.hosts.push(host);
         }

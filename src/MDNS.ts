@@ -183,6 +183,8 @@ class MDNS {
     advertise?: boolean;
     id?: number;
   }): Promise<void> {
+    this.logger.info(`Start ${this.constructor.name}`);
+
     if (!utils.isPort(port)) {
       throw new RangeError('Port must be between 0 and 65535');
     }
@@ -265,8 +267,6 @@ class MDNS {
         unicast = false;
       }
     }
-
-    this.logger.info(`Start ${this.constructor.name}`);
 
     const socketHosts: Array<[Host, 'udp4' | 'udp6', string, number?]> = [];
     // When binding to wild card
@@ -454,6 +454,7 @@ class MDNS {
 
     // We have to figure out 1 socket at a time
     // And we have to decide what we are doing here
+    this.logger.info(`Started ${this.constructor.name}`);
   }
 
   protected advertise(
@@ -939,10 +940,10 @@ class MDNS {
       }
       // We check if the service has been entirely built before dispatching the event that it has been created
       if (utils.isService(partialService)) {
+        this._networkServices.set(dirtiedServiceFdqn, partialService);
         this.dispatchEvent(
           new events.EventMDNSService({ detail: partialService }),
         );
-        this._networkServices.set(dirtiedServiceFdqn, partialService);
       }
       allRemainingQuestions.push(...remainingQuestions.values());
     }
@@ -1060,6 +1061,8 @@ class MDNS {
    * This will close all sockets.
    */
   public async stop(): Promise<void> {
+    this.logger.info(`Stop ${this.constructor.name}`);
+
     // Cancel Queries and Advertisements
     for (const query of this.queries.values()) {
       query.cancel();
@@ -1121,6 +1124,8 @@ class MDNS {
     }
     this.socketHostTable.clearTable();
     this.sockets = [];
+
+    this.logger.info(`Stopped ${this.constructor.name}`);
   }
 
   /**

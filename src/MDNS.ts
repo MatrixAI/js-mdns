@@ -871,6 +871,9 @@ class MDNS {
     // Then set the new records. This order is crucial as to make sure that we don't delete any of the records we are newly setting.
     this.networkRecordCache.set(cachableResourceRecords);
 
+    // Parse the remoteNetworkInterfaceIndex in case of link-local addresses.
+    const remoteNetworkInterfaceIndex = rinfo.address.split('%', 2).at(1);
+
     // We parse the resource records to figure out what service fdqns have been dirtied
     const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecords);
 
@@ -935,7 +938,11 @@ class MDNS {
           if (!Array.isArray(partialService.hosts)) {
             partialService.hosts = [];
           }
-          partialService.hosts.push(responseRecord.data);
+          let host = responseRecord.data;
+          if (host.startsWith('fe80:') && remoteNetworkInterfaceIndex != null) {
+            host = `${host}%${remoteNetworkInterfaceIndex}` as Host;
+          }
+          partialService.hosts.push(host);
         }
       }
       // We check if the service has been entirely built before dispatching the event that it has been created

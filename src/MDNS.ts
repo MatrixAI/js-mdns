@@ -282,7 +282,7 @@ class MDNS {
       const networkAddresses = networkInterfaces[networkInterfaceName];
       if (networkAddresses == null) continue;
       for (const networkAddress of networkAddresses) {
-        if (networkAddress.internal) continue;
+        if (networkAddress.internal && networkAddress.family === 'IPv6') continue;
         const { address, family, netmask } = networkAddress;
         if (ipv6Only) {
           if (family !== 'IPv6') continue;
@@ -667,6 +667,10 @@ class MDNS {
           }),
         );
       }
+    }
+    else if (utils.isIPv4MappedIPv6(rinfo.address)) {
+      // if the message is received unicast socket, rinfo.address maybe an IPv4MappedIPv6 address, as the unicast address is bound on the '::'
+      rinfo.address = utils.fromIPv4MappedIPv6(rinfo.address);
     }
 
     let packet: Packet;

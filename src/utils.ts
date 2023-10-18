@@ -66,6 +66,28 @@ function isIPv4MappedIPv6(host: string): host is Host {
 }
 
 /**
+ * Extracts the IPv4 portion out of the IPv4 mapped IPv6 address.
+ * Can handle both the dotted decimal and hex variants.
+ * 1. ::ffff:7f00:1
+ * 2. ::ffff:127.0.0.1
+ * Always returns the dotted decimal variant.
+ */
+function fromIPv4MappedIPv6(host: string): Host {
+  const ipv4 = host.slice('::ffff:'.length);
+  if (isIPv4(ipv4)) {
+    return ipv4 as Host;
+  }
+  const matches = ipv4.match(/^([0-9a-fA-F]{1,4}):([0-9a-fA-F]{1,4})$/);
+  if (matches == null) {
+    throw new TypeError('Invalid IPv4 mapped IPv6 address');
+  }
+  const ipv4Hex = matches[1].padStart(4, '0') + matches[2].padStart(4, '0');
+  const ipv4Hexes = ipv4Hex.match(/.{1,2}/g)!;
+  const ipv4Decs = ipv4Hexes.map((h) => parseInt(h, 16));
+  return ipv4Decs.join('.') as Host;
+}
+
+/**
  * This gets the network interfaces from Node's os.
  */
 function getNetworkInterfaces(): NetworkInterfaces {
@@ -286,6 +308,7 @@ export {
   isIPv4,
   isIPv6,
   isIPv4MappedIPv6,
+  fromIPv4MappedIPv6,
   getNetworkInterfaces,
   getHostname,
   getPlatform,

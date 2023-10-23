@@ -3,6 +3,7 @@ import type {
   Hostname,
   Port,
   Service,
+  ServicePOJO,
   NetworkInterfaces,
   SocketInfo,
   MulticastSocketInfo,
@@ -141,7 +142,7 @@ class MDNS {
    * The Key is a FQDN.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get localServices(): ReadonlyMap<FQDN, Service> {
+  public get localServices(): ReadonlyMap<string, ServicePOJO> {
     return this._localServices;
   }
 
@@ -150,7 +151,7 @@ class MDNS {
    * The Key is a FQDN.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get networkServices(): ReadonlyMap<FQDN, Service> {
+  public get networkServices(): ReadonlyMap<string, ServicePOJO> {
     return this._networkServices;
   }
 

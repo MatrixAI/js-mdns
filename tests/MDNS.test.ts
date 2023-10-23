@@ -6,6 +6,9 @@ describe(MDNS.name, () => {
   let mdns1: MDNS;
   let mdns2: MDNS;
 
+  const mdnsGroups = ['224.0.0.250', 'ff02::fa17'];
+  const mdnsPort = 64023;
+
   beforeEach(async () => {
     mdns1 = new MDNS();
     mdns2 = new MDNS();
@@ -15,11 +18,18 @@ describe(MDNS.name, () => {
     await mdns2.stop();
   });
   test('advertisement', async () => {
-    const mdnsPort = 1234 as Port;
     const mdns1Hostname = 'polykey1' as Hostname;
     const mdns2Hostname = 'polykey2' as Hostname;
-    await mdns1.start({ hostname: mdns1Hostname, port: mdnsPort });
-    await mdns2.start({ hostname: mdns2Hostname, port: mdnsPort });
+    await mdns1.start({
+      hostname: mdns1Hostname,
+      port: mdnsPort,
+      groups: mdnsGroups,
+    });
+    await mdns2.start({
+      hostname: mdns2Hostname,
+      port: mdnsPort,
+      groups: mdnsGroups,
+    });
     const service = {
       name: 'test',
       port: mdnsPort,
@@ -46,17 +56,18 @@ describe(MDNS.name, () => {
     });
   });
   test('query', async () => {
-    const mdnsPort = 1234 as Port;
     const mdns1Hostname = 'polykey1' as Hostname;
     const mdns2Hostname = 'polykey2' as Hostname;
     await mdns1.start({
       hostname: mdns1Hostname,
       port: mdnsPort,
+      groups: mdnsGroups,
       advertise: false,
     });
     await mdns2.start({
       hostname: mdns2Hostname,
       port: mdnsPort,
+      groups: mdnsGroups,
       advertise: false,
     });
     const service = {

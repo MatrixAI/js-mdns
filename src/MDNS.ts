@@ -8,7 +8,7 @@ import type {
   MulticastSocketInfo,
   SocketHostRow,
   RemoteInfo,
-  FDQN,
+  FQDN,
 } from './types';
 import type {
   CachableResourceRecord,
@@ -58,10 +58,10 @@ class MDNS {
 
   protected localRecordCache: ResourceRecordCache;
   protected localRecordCacheDirty = true;
-  protected _localServices: Map<FDQN, Service> = new Map();
+  protected _localServices: Map<FQDN, Service> = new Map();
 
   protected networkRecordCache: ResourceRecordCache;
-  protected _networkServices: Map<FDQN, Service> = new Map();
+  protected _networkServices: Map<FQDN, Service> = new Map();
   protected sockets: Array<dgram.Socket> = [];
   protected socketMap: WeakMap<dgram.Socket, SocketInfo> = new WeakMap();
   protected socketHostTable: Table<SocketHostRow> = new Table(
@@ -138,19 +138,19 @@ class MDNS {
 
   /**
    * Returns a Map of services that you have registered.
-   * The Key is a FDQN.
+   * The Key is a FQDN.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get localServices(): ReadonlyMap<FDQN, Service> {
+  public get localServices(): ReadonlyMap<FQDN, Service> {
     return this._localServices;
   }
 
   /**
    * Returns a Map of services on the network.
-   * The Key is a FDQN.
+   * The Key is a FQDN.
    */
   @ready(new errors.ErrorMDNSNotRunning())
-  public get networkServices(): ReadonlyMap<FDQN, Service> {
+  public get networkServices(): ReadonlyMap<FQDN, Service> {
     return this._networkServices;
   }
 
@@ -879,22 +879,22 @@ class MDNS {
     // Parse the remoteNetworkInterfaceIndex in case of link-local addresses.
     const remoteNetworkInterfaceIndex = rinfo.address.split('%', 2).at(1);
 
-    // We parse the resource records to figure out what service fdqns have been dirtied
-    const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecords);
+    // We parse the resource records to figure out what service fqdns have been dirtied
+    const dirtiedServiceFqdns = this.extractRelatedFqdns(resourceRecords);
 
-    // Process the dirtied fdqns to figure out what questions still need to be asked.
+    // Process the dirtied fqdns to figure out what questions still need to be asked.
     const allRemainingQuestions: Array<QuestionRecord> = [];
-    for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
+    for (const dirtiedServiceFqdn of dirtiedServiceFqdns) {
       const partialService: Partial<Service> = {};
       const remainingQuestions: Map<QType, QuestionRecord> = new Map();
       remainingQuestions.set(QType.TXT, {
-        name: dirtiedServiceFdqn,
+        name: dirtiedServiceFqdn,
         type: QType.TXT,
         class: QClass.IN,
         unicast: this._unicast,
       });
       remainingQuestions.set(QType.SRV, {
-        name: dirtiedServiceFdqn,
+        name: dirtiedServiceFqdn,
         type: QType.SRV,
         class: QClass.IN,
         unicast: this._unicast,
@@ -956,7 +956,7 @@ class MDNS {
       }
       // We check if the service has been entirely built before dispatching the event that it has been created
       if (utils.isService(partialService)) {
-        this._networkServices.set(dirtiedServiceFdqn, partialService);
+        this._networkServices.set(dirtiedServiceFqdn, partialService);
         this.dispatchEvent(
           new events.EventMDNSService({ detail: partialService }),
         );
@@ -1007,36 +1007,36 @@ class MDNS {
   protected async processExpiredResourceRecords(
     resourceRecord: CachableResourceRecord,
   ) {
-    const dirtiedServiceFdqns = this.extractRelatedFdqns(resourceRecord);
+    const dirtiedServiceFqdns = this.extractRelatedFqdns(resourceRecord);
 
-    for (const dirtiedServiceFdqn of dirtiedServiceFdqns) {
-      const foundService = this._networkServices.get(dirtiedServiceFdqn);
+    for (const dirtiedServiceFqdn of dirtiedServiceFqdns) {
+      const foundService = this._networkServices.get(dirtiedServiceFqdn);
       if (foundService == null) continue;
       this.dispatchEvent(
         new events.EventMDNSServiceRemoved({ detail: foundService }),
       );
-      this._networkServices.delete(dirtiedServiceFdqn);
+      this._networkServices.delete(dirtiedServiceFqdn);
     }
   }
 
-  protected extractRelatedFdqns(
+  protected extractRelatedFqdns(
     resourceRecords: ResourceRecord | Array<ResourceRecord>,
-  ): Array<FDQN> {
+  ): Array<FQDN> {
     if (!Array.isArray(resourceRecords)) {
-      return this.extractRelatedFdqns([resourceRecords]);
+      return this.extractRelatedFqdns([resourceRecords]);
     }
-    const relatedFdqns: Array<FDQN> = [];
+    const relatedFqdns: Array<FQDN> = [];
     for (const resourceRecord of resourceRecords) {
       if (
         resourceRecord.type === RType.SRV ||
         resourceRecord.type === RType.TXT
       ) {
-        relatedFdqns.push(resourceRecord.name as FDQN);
+        relatedFqdns.push(resourceRecord.name as FQDN);
       } else if (
         resourceRecord.type === RType.PTR &&
         resourceRecord.name !== '_services._dns-sd._udp.local'
       ) {
-        relatedFdqns.push(resourceRecord.data as FDQN);
+        relatedFqdns.push(resourceRecord.data as FQDN);
       } else if (
         resourceRecord.type === RType.A ||
         resourceRecord.type === RType.AAAA
@@ -1047,12 +1047,12 @@ class MDNS {
           );
         for (const relatedResourceRecord of relatedResourceRecords) {
           if (relatedResourceRecord.type === RType.SRV) {
-            relatedFdqns.push(relatedResourceRecord.name as FDQN);
+            relatedFqdns.push(relatedResourceRecord.name as FQDN);
           }
         }
       }
     }
-    return relatedFdqns;
+    return relatedFqdns;
   }
 
   protected async handleSocketError(e: any, socket: dgram.Socket) {
@@ -1182,9 +1182,9 @@ class MDNS {
       hostname: this._hostname,
       hosts: [],
     };
-    const fdqn = utils.toFdqn(service);
+    const fqdn = utils.toFqdn(service);
 
-    this._localServices.set(fdqn, service);
+    this._localServices.set(fqdn, service);
     this.localRecordCacheDirty = true;
 
     if (!advertise) return;
@@ -1200,7 +1200,7 @@ class MDNS {
       additionals: [],
       authorities: [],
     };
-    this.advertise(advertisePacket, fdqn);
+    this.advertise(advertisePacket, fqdn);
   }
 
   /**
@@ -1220,16 +1220,16 @@ class MDNS {
     type: string;
     protocol: 'udp' | 'tcp';
   }) {
-    const fdqn = utils.toFdqn({
+    const fqdn = utils.toFqdn({
       name,
       type,
       protocol,
     });
 
-    const foundService = this._localServices.get(fdqn);
+    const foundService = this._localServices.get(fqdn);
     if (foundService == null) return;
 
-    this._localServices.delete(fdqn);
+    this._localServices.delete(fqdn);
     this.localRecordCacheDirty = true;
     const advertisePacket: Packet = {
       id: this._id,
@@ -1248,7 +1248,7 @@ class MDNS {
       additionals: [],
       authorities: [],
     };
-    this.advertise(advertisePacket, fdqn);
+    this.advertise(advertisePacket, fqdn);
   }
 
   /**

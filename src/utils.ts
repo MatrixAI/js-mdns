@@ -1,6 +1,6 @@
 import type {
   Callback,
-  FDQN,
+  FQDN,
   Host,
   Hostname,
   NetworkInterfaces,
@@ -197,10 +197,10 @@ function toServiceResourceRecords(
   return services.flatMap((service) => {
     const serviceDomain =
       `_${service.type}._${service.protocol}.local` as Hostname;
-    const fdqn = `${service.name}.${serviceDomain}` as Hostname;
+    const fqdn = `${service.name}.${serviceDomain}` as Hostname;
     return [
       {
-        name: fdqn,
+        name: fqdn,
         type: RType.SRV,
         class: RClass.IN,
         ttl: ttl,
@@ -213,7 +213,7 @@ function toServiceResourceRecords(
         },
       },
       {
-        name: fdqn,
+        name: fqdn,
         type: RType.TXT,
         class: RClass.IN,
         ttl: ttl,
@@ -226,7 +226,7 @@ function toServiceResourceRecords(
         class: RClass.IN,
         ttl: ttl,
         flush: flush,
-        data: fdqn,
+        data: fqdn,
       },
       {
         name: '_services._dns-sd._udp.local' as Hostname,
@@ -272,7 +272,7 @@ function toServiceDomain({
   return `_${type}._${protocol}.local` as Hostname;
 }
 
-function toFdqn({
+function toFqdn({
   name,
   type,
   protocol,
@@ -290,7 +290,7 @@ function toFdqn({
       protocol?: undefined;
       serviceDomain: Hostname;
     }
-)): FDQN {
+)): FQDN {
   let serviceDomain_: Hostname | undefined;
   if (serviceDomain == null) {
     serviceDomain_ = toServiceDomain({
@@ -300,7 +300,7 @@ function toFdqn({
   } else {
     serviceDomain_ = serviceDomain;
   }
-  return `${name}.${serviceDomain_}` as FDQN;
+  return `${name}.${serviceDomain_}` as FQDN;
 }
 
 export {
@@ -320,5 +320,5 @@ export {
   bindSocket,
   getRandomPacketId,
   toServiceDomain,
-  toFdqn,
+  toFqdn,
 };

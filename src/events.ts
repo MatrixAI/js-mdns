@@ -1,4 +1,4 @@
-import type { Service } from './types';
+import type { ServicePOJO } from './types';
 import type {
   ErrorMDNSPacketParse,
   ErrorMDNSSocketInternal,
@@ -18,9 +18,9 @@ class EventMDNSStop extends EventMDNS {}
 
 class EventMDNSStopped extends EventMDNS {}
 
-class EventMDNSService extends EventMDNS<Service> {}
+class EventMDNSService extends EventMDNS<ServicePOJO> {}
 
-class EventMDNSServiceRemoved extends EventMDNS<Service> {}
+class EventMDNSServiceRemoved extends EventMDNS<ServicePOJO> {}
 
 class EventMDNSError extends EventMDNS<
   | ErrorMDNSPacketParse<unknown>

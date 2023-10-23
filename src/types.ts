@@ -60,6 +60,16 @@ type Service = {
   hosts: Array<Host>;
 };
 
+type ServicePOJO = {
+  name: string;
+  type: string;
+  protocol: 'udp' | 'tcp';
+  port: number;
+  txt?: Record<string, string>;
+  hostname: string;
+  hosts: Array<string>;
+};
+
 type NetworkAddress = {
   address: Host;
   family: 'IPv4' | 'IPv6';
@@ -132,6 +142,7 @@ export type {
   Port,
   Address,
   Service,
+  ServicePOJO,
   NetworkAddress,
   NetworkInterfaces,
   RemoteInfo,

@@ -1,4 +1,4 @@
-import type { Hostname, Port } from '@/types';
+import type { Hostname } from '@/types';
 import * as events from '@/events';
 import MDNS from '@/MDNS';
 

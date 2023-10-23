@@ -1259,7 +1259,8 @@ class MDNS {
   }
 
   /**
-   * Start a query for services of a specific type and protocol
+   * Start a query for services of a specific type and protocol.
+   * If there already is a query running for the `type` and `protocol` combination, it will be cancelled and restarted.
    * @param opts
    * @param opts.type - The type of service you want to query for.
    * @param opts.protocol - The protocol of service you want to query for. This is either 'udp' or 'tcp'.
@@ -1282,6 +1283,12 @@ class MDNS {
       type,
       protocol,
     });
+    // Cancel query and restart
+    const existingQuery = this.queries.get(serviceDomain);
+    if (existingQuery != null) {
+      existingQuery.cancel();
+      this.queries.delete(serviceDomain);
+    }
     const questionRecord: QuestionRecord = {
       name: serviceDomain,
       type: QType.PTR,
@@ -1366,7 +1373,11 @@ class MDNS {
       type,
       protocol,
     });
-    this.queries.get(serviceDomain)?.cancel();
+    const existingQuery = this.queries.get(serviceDomain);
+    if (existingQuery != null) {
+      existingQuery.cancel();
+      this.queries.delete(serviceDomain);
+    }
   }
 }
 

@@ -265,6 +265,7 @@ class MDNS {
         );
       } catch (e) {
         await unicastSocketClose();
+        unicastSocket.removeAllListeners();
         unicast = false;
       }
     }
@@ -420,8 +421,7 @@ class MDNS {
       await ResourceRecordCache.createResourceRecordCache();
     this.networkRecordCache.addEventListener(
       EventResourceRecordCacheExpired.name,
-      (event: EventResourceRecordCacheExpired) =>
-        this.processExpiredResourceRecords(event.detail),
+      this.handleEventResourceRecordCacheExpired,
     );
 
     if (!advertise) return;
@@ -1005,20 +1005,21 @@ class MDNS {
   }
 
   // We processed expired records here. Note that this also processes records of TTL 0, as they expire after 1 second as per spec.
-  protected async processExpiredResourceRecords(
-    resourceRecord: CachableResourceRecord,
-  ) {
+  protected handleEventResourceRecordCacheExpired = (
+    evt: EventResourceRecordCacheExpired,
+  ) => {
+    const resourceRecord = evt.detail;
     const dirtiedServiceFqdns = this.extractRelatedFqdns(resourceRecord);
 
     for (const dirtiedServiceFqdn of dirtiedServiceFqdns) {
       const foundService = this._networkServices.get(dirtiedServiceFqdn);
       if (foundService == null) continue;
+      this._networkServices.delete(dirtiedServiceFqdn);
       this.dispatchEvent(
         new events.EventMDNSServiceRemoved({ detail: foundService }),
       );
-      this._networkServices.delete(dirtiedServiceFqdn);
     }
-  }
+  };
 
   protected extractRelatedFqdns(
     resourceRecords: ResourceRecord | Array<ResourceRecord>,
@@ -1131,12 +1132,17 @@ class MDNS {
     this.localRecordCacheDirty = true;
     this._localServices.clear();
     await this.networkRecordCache.destroy();
+    this.networkRecordCache.removeEventListener(
+      EventResourceRecordCacheExpired.name,
+      this.handleEventResourceRecordCacheExpired,
+    );
     this._networkServices.clear();
 
     // Close all Sockets
     for (const socket of this.sockets) {
       const socketInfo = this.socketMap.get(socket);
       await socketInfo?.close();
+      socket.removeAllListeners();
       this.socketMap.delete(socket);
     }
     this.socketHostTable.clearTable();

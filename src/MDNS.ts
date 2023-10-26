@@ -77,6 +77,10 @@ class MDNS {
 
   protected queries: Map<string, PromiseCancellable<void>> = new Map();
   protected advertisements: Map<string, PromiseCancellable<void>> = new Map();
+  /**
+   * Represents the advertisements and queries that have been cancelled and are in the process of stopping
+   */
+  protected stoppingTasks: Set<PromiseCancellable<unknown>> = new Set();
 
   public constructor({
     getNetworkInterfaces = utils.getNetworkInterfaces,
@@ -465,11 +469,13 @@ class MDNS {
     advertisementKey: string,
     socket?: MulticastSocketInfo | Array<MulticastSocketInfo>,
   ) {
+    // If the advertisement already, exists cancel and restart it
     const advertisement = this.advertisements.get(advertisementKey);
     if (advertisement != null) {
       advertisement.cancel();
+      this.stoppingTasks.add(advertisement);
     }
-
+    // Construct the PromiseCancellable
     const abortController = new AbortController();
     const promise = new PromiseCancellable<void>(async (resolve, reject) => {
       await this.sendMulticastPacket(packet, socket).catch(reject);
@@ -495,18 +501,18 @@ class MDNS {
         { once: true },
       );
     }, abortController);
-
-    // Delete the advertisement key whether reject or resolve
+    // Delete the advertisement key and delete it from stoppingTasks whether reject or resolve
     promise.then(
       () => {
+        this.stoppingTasks.delete(promise);
         this.advertisements.delete(advertisementKey);
       },
       (reason) => {
-        this.dispatchEvent(new events.EventMDNSError({ detail: reason }));
+        this.stoppingTasks.delete(promise);
         this.advertisements.delete(advertisementKey);
+        this.dispatchEvent(new events.EventMDNSError({ detail: reason }));
       },
     );
-
     this.advertisements.set(advertisementKey, promise);
   }
 
@@ -1082,13 +1088,19 @@ class MDNS {
     this.logger.info(`Stop ${this.constructor.name}`);
 
     // Cancel Queries and Advertisements
+    const stoppingTasks = [...this.stoppingTasks];
     for (const query of this.queries.values()) {
       query.cancel();
+      stoppingTasks.push(query);
     }
     for (const advertisement of this.advertisements.values()) {
       advertisement.cancel();
+      stoppingTasks.push(advertisement);
     }
+    // We don't care if any Queries or Advertisements have failed, just that they have stopped.
+    await Promise.allSettled(stoppingTasks);
 
+    const goodbyeProms: Array<Promise<unknown>> = [];
     // Send the goodbye packet
     const serviceResourceRecords = utils.toServiceResourceRecords(
       [...this._localServices.values()],
@@ -1124,8 +1136,10 @@ class MDNS {
         additionals: [],
         authorities: [],
       };
-      await this.sendMulticastPacket(advertisePacket, socketInfo);
+      goodbyeProms.push(this.sendMulticastPacket(advertisePacket, socketInfo));
     }
+    // We don't care if any goodbye packets failed to send, just that they have completed
+    await Promise.allSettled(goodbyeProms);
 
     // Clear Services and Cache
     await this.localRecordCache.destroy();
@@ -1190,10 +1204,10 @@ class MDNS {
       hosts: [],
     };
     const fqdn = utils.toFqdn(service);
-
+    // Update the service even if it is there
     this._localServices.set(fqdn, service);
     this.localRecordCacheDirty = true;
-
+    //  Don't bother to advertise if the param is not enabled
     if (!advertise) return;
     const advertisePacket: Packet = {
       id: this._id,
@@ -1232,10 +1246,10 @@ class MDNS {
       type,
       protocol,
     });
-
+    // If there is no found service, don't bother
     const foundService = this._localServices.get(fqdn);
     if (foundService == null) return;
-
+    // Delete and advertise the service
     this._localServices.delete(fqdn);
     this.localRecordCacheDirty = true;
     const advertisePacket: Packet = {
@@ -1287,6 +1301,7 @@ class MDNS {
     const existingQuery = this.queries.get(serviceDomain);
     if (existingQuery != null) {
       existingQuery.cancel();
+      this.stoppingTasks.add(existingQuery);
       this.queries.delete(serviceDomain);
     }
     const questionRecord: QuestionRecord = {
@@ -1307,7 +1322,7 @@ class MDNS {
       additionals: [],
       authorities: [],
     };
-
+    // Create the PromiseCancellable
     const abortController = new AbortController();
     const promise = new PromiseCancellable<void>(async (resolve, reject) => {
       await this.sendMulticastPacket(queryPacket).catch(reject);
@@ -1341,17 +1356,19 @@ class MDNS {
         { once: true },
       );
     }, abortController);
-
+    // After promise resolves/rejects
     promise.then(
       () => {
+        this.stoppingTasks.delete(promise);
         this.queries.delete(serviceDomain);
       },
       (reason) => {
+        this.stoppingTasks.delete(promise);
         this.queries.delete(serviceDomain);
         this.dispatchEvent(new events.EventMDNSError({ detail: reason }));
       },
     );
-
+    // Set in queries map
     this.queries.set(serviceDomain, promise);
   }
 
@@ -1376,6 +1393,7 @@ class MDNS {
     const existingQuery = this.queries.get(serviceDomain);
     if (existingQuery != null) {
       existingQuery.cancel();
+      this.stoppingTasks.add(existingQuery);
       this.queries.delete(serviceDomain);
     }
   }

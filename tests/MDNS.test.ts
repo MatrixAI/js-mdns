@@ -97,4 +97,99 @@ describe(MDNS.name, () => {
       );
     });
   });
+  describe('lifecycle', () => {
+    test('starting and stopping a query', async () => {
+      const mdns1Hostname = 'polykey1' as Hostname;
+      await mdns1.start({
+        hostname: mdns1Hostname,
+        port: mdnsPort,
+        groups: mdnsGroups,
+        advertise: false,
+      });
+      const service = {
+        name: 'test',
+        port: mdnsPort,
+        protocol: 'udp',
+        type: 'polykey',
+        advertise: false,
+      } as Parameters<typeof MDNS.prototype.startQuery>[0];
+      mdns1.startQuery(service);
+      mdns1.stopQuery(service);
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(1);
+      await mdns1.stop();
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(0);
+    });
+    test('starting and stopping multiple queries', async () => {
+      const mdns1Hostname = 'polykey1' as Hostname;
+      await mdns1.start({
+        hostname: mdns1Hostname,
+        port: mdnsPort,
+        groups: mdnsGroups,
+        advertise: false,
+      });
+      const service = {
+        name: 'test',
+        port: mdnsPort,
+        protocol: 'udp',
+        type: 'polykey',
+      } as Parameters<typeof MDNS.prototype.startQuery>[0];
+      mdns1.startQuery(service);
+      mdns1.startQuery(service);
+      mdns1.stopQuery(service);
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(2);
+      await mdns1.stop();
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(0);
+    });
+    test('starting multiple advertisements', async () => {
+      const mdns1Hostname = 'polykey1' as Hostname;
+      await mdns1.start({
+        hostname: mdns1Hostname,
+        port: mdnsPort,
+        groups: mdnsGroups,
+        advertise: false,
+      });
+      const service = {
+        name: 'test',
+        port: mdnsPort,
+        protocol: 'udp',
+        type: 'polykey',
+      } as Parameters<typeof MDNS.prototype.registerService>[0];
+      mdns1.registerService(service);
+      mdns1.registerService(service);
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(1);
+      await mdns1.stop();
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(0);
+    });
+    test('starting and stopping multiple queries and advertisements', async () => {
+      const mdns1Hostname = 'polykey1' as Hostname;
+      await mdns1.start({
+        hostname: mdns1Hostname,
+        port: mdnsPort,
+        groups: mdnsGroups,
+        advertise: false,
+      });
+      const service = {
+        name: 'test',
+        port: mdnsPort,
+        protocol: 'udp',
+        type: 'polykey',
+      } as Parameters<typeof MDNS.prototype.registerService>[0];
+      mdns1.startQuery(service);
+      mdns1.startQuery(service);
+      mdns1.stopQuery(service);
+      mdns1.registerService(service);
+      mdns1.registerService(service);
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(3);
+      await mdns1.stop();
+      // @ts-ignore: Kidnap protected property
+      expect(mdns1.stoppingTasks.size).toBe(0);
+    });
+  });
 });

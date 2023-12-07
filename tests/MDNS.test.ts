@@ -100,6 +100,79 @@ describe(MDNS.name, () => {
       );
     });
   });
+  test('double query does not break', async () => {
+    const mdns1Hostname = 'polykey1' as Hostname;
+    const mdns2Hostname = 'polykey2' as Hostname;
+    await mdns1.start({
+      hostname: mdns1Hostname,
+      port: mdnsPort,
+      groups: mdnsGroups,
+      advertise: false,
+    });
+    await mdns2.start({
+      hostname: mdns2Hostname,
+      port: mdnsPort,
+      groups: mdnsGroups,
+      advertise: false,
+    });
+    const service = {
+      name: 'test',
+      port: mdnsPort,
+      protocol: 'udp',
+      type: 'polykey',
+      advertise: false,
+    } as Parameters<typeof MDNS.prototype.registerService>[0];
+    mdns2.registerService(service);
+    // @ts-ignore: kidnap protected property
+    const queries = mdns1.queries;
+    mdns1.startQuery(service);
+    expect(queries.size).toBe(1);
+    mdns1.startQuery(service);
+    expect(queries.size).toBe(1);
+    await new Promise((res) => setTimeout(res, 100));
+    expect(queries.size).toBe(1);
+    mdns1.stopQuery(service);
+    expect(queries.size).toBe(0);
+    await new Promise((res) => setTimeout(res, 100));
+    expect(queries.size).toBe(0);
+  });
+  test('stop then start query does not break', async () => {
+    const mdns1Hostname = 'polykey1' as Hostname;
+    const mdns2Hostname = 'polykey2' as Hostname;
+    await mdns1.start({
+      hostname: mdns1Hostname,
+      port: mdnsPort,
+      groups: mdnsGroups,
+      advertise: false,
+    });
+    await mdns2.start({
+      hostname: mdns2Hostname,
+      port: mdnsPort,
+      groups: mdnsGroups,
+      advertise: false,
+    });
+    const service = {
+      name: 'test',
+      port: mdnsPort,
+      protocol: 'udp',
+      type: 'polykey',
+      advertise: false,
+    } as Parameters<typeof MDNS.prototype.registerService>[0];
+    mdns2.registerService(service);
+    // @ts-ignore: kidnap protected property
+    const queries = mdns1.queries;
+    mdns1.startQuery(service);
+    expect(queries.size).toBe(1);
+    mdns1.stopQuery(service);
+    mdns1.startQuery(service);
+    expect(queries.size).toBe(1);
+    await new Promise((res) => setTimeout(res, 100));
+    expect(queries.size).toBe(1);
+    mdns1.stopQuery(service);
+    expect(queries.size).toBe(0);
+    await new Promise((res) => setTimeout(res, 100));
+    expect(queries.size).toBe(0);
+  });
   describe('lifecycle', () => {
     test('starting and stopping a query', async () => {
       const mdns1Hostname = 'polykey1' as Hostname;
@@ -119,10 +192,10 @@ describe(MDNS.name, () => {
       mdns1.startQuery(service);
       mdns1.stopQuery(service);
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(1);
+      expect(mdns1.runningTasks.size).toBe(1);
       await mdns1.stop();
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(0);
+      expect(mdns1.runningTasks.size).toBe(0);
     });
     test('starting and stopping multiple queries', async () => {
       const mdns1Hostname = 'polykey1' as Hostname;
@@ -142,10 +215,10 @@ describe(MDNS.name, () => {
       mdns1.startQuery(service);
       mdns1.stopQuery(service);
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(2);
+      expect(mdns1.runningTasks.size).toBe(2);
       await mdns1.stop();
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(0);
+      expect(mdns1.runningTasks.size).toBe(0);
     });
     test('starting multiple advertisements', async () => {
       const mdns1Hostname = 'polykey1' as Hostname;
@@ -164,10 +237,10 @@ describe(MDNS.name, () => {
       mdns1.registerService(service);
       mdns1.registerService(service);
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(1);
+      expect(mdns1.runningTasks.size).toBe(2);
       await mdns1.stop();
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(0);
+      expect(mdns1.runningTasks.size).toBe(0);
     });
     test('starting and stopping multiple queries and advertisements', async () => {
       const mdns1Hostname = 'polykey1' as Hostname;
@@ -189,10 +262,10 @@ describe(MDNS.name, () => {
       mdns1.registerService(service);
       mdns1.registerService(service);
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(3);
+      expect(mdns1.runningTasks.size).toBe(4);
       await mdns1.stop();
       // @ts-ignore: Kidnap protected property
-      expect(mdns1.stoppingTasks.size).toBe(0);
+      expect(mdns1.runningTasks.size).toBe(0);
     });
   });
 });

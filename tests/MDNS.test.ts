@@ -1,8 +1,11 @@
 import type { Hostname } from '@/types';
+import Logger, { LogLevel, StreamHandler } from '@matrixai/logger';
 import * as events from '@/events';
 import MDNS from '@/MDNS';
 
 describe(MDNS.name, () => {
+  const logger = new Logger(MDNS.name, LogLevel.WARN, [new StreamHandler()]);
+
   let mdns1: MDNS;
   let mdns2: MDNS;
 
@@ -10,8 +13,8 @@ describe(MDNS.name, () => {
   const mdnsPort = 64023;
 
   beforeEach(async () => {
-    mdns1 = new MDNS();
-    mdns2 = new MDNS();
+    mdns1 = new MDNS({ logger });
+    mdns2 = new MDNS({ logger });
   });
   afterEach(async () => {
     await mdns1.stop();

@@ -1340,7 +1340,11 @@ class MDNS {
           if (timerSignal.aborted) {
             return;
           }
-          await this.sendMulticastPacket(queryPacket).catch(reject);
+          try {
+            await this.sendMulticastPacket(queryPacket);
+          } catch (e) {
+            return reject(e);
+          }
           setTimer();
         }, delayMilis);
         delayMilis *= 2;

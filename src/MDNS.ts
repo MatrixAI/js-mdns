@@ -343,7 +343,7 @@ class MDNS {
       const linkLocalInterfaceIndex =
         platform !== 'win32' ? networkInterfaceName : scopeid;
       const linkLocalSocketHost =
-        udpType === 'udp6' && socketHost.startsWith('fe80')
+        udpType === 'udp6'
           ? ((socketHost + '%' + linkLocalInterfaceIndex) as Host)
           : socketHost;
 

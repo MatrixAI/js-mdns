@@ -4,6 +4,9 @@
     'include_dirs': [
       "<!(node -e \"require('napi-macros')\")"
     ],
+    "dependencies": [
+      "<!(node -p \"require('node-addon-api').targets\"):node_addon_api",
+    ],
     'sources': [],
     'conditions': [
       ['OS=="linux"', {

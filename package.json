@@ -65,7 +65,7 @@
     "jest": "^28.1.1",
     "jest-extended": "^3.0.1",
     "jest-junit": "^14.0.0",
-    "napi-macros": "^2.2.2",
+    "node-addon-api": "^8.0.0",
     "node-gyp": "^9.0.0",
     "prettier": "^2.6.2",
     "semver": "^7.5.4",

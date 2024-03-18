@@ -1,17 +1,21 @@
 #define NAPI_VERSION 3
 
-#include <napi-macros.h>
+#include <napi.h>
 #include <node_api.h>
 
 #include "socketUtils.h"
 
-NAPI_METHOD(disableSocketMulticastAll) {
-  NAPI_ARGV(1);
-  NAPI_ARGV_INT32(sockfd, 0);
-
+Napi::Value disableSocketMulticastAll(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  int sockfd = info[0].As<Napi::Number>().Int32Value();
   bool success = DisableMulticastAll(sockfd);
-
-  NAPI_RETURN_INT32(success);
+  return Napi::Boolean::New(env, success);
 }
 
-NAPI_INIT() { NAPI_EXPORT_FUNCTION(disableSocketMulticastAll); }
+Napi::Object Init(Napi::Env env, Napi::Object exports) {
+  exports.Set(Napi::String::New(env, "disableSocketMulticastAll"),
+              Napi::Function::New(env, disableSocketMulticastAll));
+  return exports;
+}
+
+NODE_API_MODULE(addon, Init)

@@ -168,6 +168,8 @@ class MDNS {
    * @param opts.hostname - The hostname to use for the MDNS stack. Defaults to the OS hostname.
    * @param opts.advertise - Allows MDNS to advertise it's hostnames. Defaults to true.
    * @param opts.id - The unique unsigned 16 bit integer ID used for all outgoing MDNS packets. Defaults to a random number.
+   * @param opts.enableLinuxNativeSocketOptions - Enables Linux native code to disable `IP_MULTICAST_ALL` and `IPV6_MULTICAST_ALL` to lessen reliance on subnet filtering.
+   * This will access a deprecated property on the socket to get the file descriptor. Defaults to false.
    * @throws {RangeError} - If `opts.groups` is empty.
    * @throws {ErrorMDNSSocketInvalidBindAddress} - If a socket cannot bind.
    * @throws {ErrorMDNSInterfaceRange} - If no valid interfaces have been found.
@@ -179,6 +181,7 @@ class MDNS {
     hostname = utils.getHostname(),
     advertise = true,
     id = utils.getRandomPacketId(),
+    disableLinuxMulticastAllOption = false,
   }: {
     port?: number;
     ipv6Only?: boolean;
@@ -187,6 +190,7 @@ class MDNS {
     hostname?: string;
     advertise?: boolean;
     id?: number;
+    disableLinuxMulticastAllOption?: boolean;
   }): Promise<void> {
     this.logger.info(`Start ${this.constructor.name}`);
 
@@ -246,7 +250,7 @@ class MDNS {
           '::',
         );
         unicastSocketClose = close;
-        if (platform === 'linux') {
+        if (platform === 'linux' && disableLinuxMulticastAllOption) {
           socketUtils.disableSocketMulticastAll(
             (unicastSocket as any)._handle.fd,
           );
@@ -370,7 +374,7 @@ class MDNS {
         );
         try {
           await Promise.race([socketBindP, errorP]);
-          if (platform === 'linux') {
+          if (platform === 'linux' && disableLinuxMulticastAllOption) {
             socketUtils.disableSocketMulticastAll((socket as any)._handle.fd);
           }
           socket.setMulticastInterface(linkLocalSocketHost);

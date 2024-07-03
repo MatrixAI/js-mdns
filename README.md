@@ -1,8 +1,5 @@
 # js-mdns
 
-staging:[![pipeline status](https://gitlab.com/MatrixAI/open-source/js-mdns/badges/staging/pipeline.svg)](https://gitlab.com/MatrixAI/open-source/js-mdns/commits/staging)
-master:[![pipeline status](https://gitlab.com/MatrixAI/open-source/js-mdns/badges/master/pipeline.svg)](https://gitlab.com/MatrixAI/open-source/js-mdns/commits/master)
-
 ## Installation
 
 ```sh
@@ -11,7 +8,7 @@ npm install --save @matrixai/mdns
 
 ## Development
 
-Run `nix-shell`, and once you're inside, you can use:
+Run `nix develop`, and once you're inside, you can use:
 
 ```sh
 # install (or reinstall packages from package.json)

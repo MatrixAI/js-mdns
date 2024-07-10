@@ -1,5 +1,7 @@
 # js-mdns
 
+Multicast DNS Stack for TypeScript/JavaScript Applications.
+
 ## Installation
 
 ```sh
@@ -35,26 +37,6 @@ See the docs at: https://matrixai.github.io/js-mdns/
 
 ### Publishing
 
-Publishing is handled automatically by the staging pipeline.
-
-Prerelease:
-
-```sh
-# npm login
-npm version prepatch --preid alpha # premajor/preminor/prepatch
-git push --follow-tags
-```
-
-Release:
-
-```sh
-# npm login
-npm version patch # major/minor/patch
-git push --follow-tags
-```
-
-Manually:
-
 ```sh
 # npm login
 npm version patch # major/minor/patch
@@ -63,3 +45,7 @@ npm publish --access public
 git push
 git push --tags
 ```
+
+## License
+
+js-mdns is licensed under Apache-2.0, you may read the terms of the license [here](LICENSE).

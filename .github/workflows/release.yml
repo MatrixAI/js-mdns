@@ -51,6 +51,8 @@ jobs:
   check-test:
     name: "Check / Test"
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/matrixai/github-runner
     strategy:
       fail-fast: false
       matrix: ${{fromJson(needs.check-matrix.outputs.matrix)}}
@@ -61,11 +63,12 @@ jobs:
         run: echo "SLUG=$(echo ${{ matrix.shard }} | sed 's/[/.]/-/g')" >> $GITHUB_ENV
       - name: Run tests
         run: |
-          npm install
+          nix develop .#ci --command bash -c $'
           npm run test -- \
             --coverageReporters json \
             --coverage \
             "${{ matrix.shard }}"
+          '
           mv tmp/coverage/coverage-final.json "tmp/coverage/${{ env.SLUG }}.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -94,6 +97,8 @@ jobs:
   build-platforms:
     name: "Build / Platforms"
     runs-on: ${{ matrix.os }}
+    container:
+      image: ${{ matrix.platform == 'linux' && 'ghcr.io/matrixai/github-runner' || null }}
     needs: check-build
     strategy:
       fail-fast: false
@@ -104,9 +109,10 @@ jobs:
             env:
               npm_config_arch: "x64"
             script: |
-              npm install
+              nix develop .#ci --command bash -c $'
               npm run prebuild --verbose
               npm test -- --ci --coverage
+              '
           - platform: windows
             os: windows-latest
             env:

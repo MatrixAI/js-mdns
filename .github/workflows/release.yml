@@ -64,6 +64,7 @@ jobs:
       - name: Run tests
         run: |
           nix develop .#ci --command bash -c $'
+          npm run prebuild --verbose
           npm run test -- \
             --coverageReporters json \
             --coverage \

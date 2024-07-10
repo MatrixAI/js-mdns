@@ -176,6 +176,7 @@ jobs:
       - name: Run deployment
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ./.npmrc
           echo 'Publishing library prerelease'
@@ -221,6 +222,7 @@ jobs:
       - name: Publish release
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ./.npmrc
           echo 'Publishing library'

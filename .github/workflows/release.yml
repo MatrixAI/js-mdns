@@ -163,8 +163,8 @@ jobs:
       cancel-in-progress: false
     needs:
       - check-lint
-      - check-build
       - check-test
+      - build-platforms
     if: contains(github.ref, '-')
     steps:
       - uses: actions/checkout@v4
@@ -207,8 +207,8 @@ jobs:
       cancel-in-progress: false
     needs:
       - check-lint
-      - check-build
       - check-test
+      - build-platforms
     if: >
       !contains(github.ref, '-')
     steps:

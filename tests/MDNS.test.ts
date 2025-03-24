@@ -1,7 +1,7 @@
-import type { Hostname } from '@/types';
+import type { Hostname } from '#types.js';
 import Logger, { LogLevel, StreamHandler } from '@matrixai/logger';
-import * as events from '@/events';
-import MDNS from '@/MDNS';
+import * as events from '#events.js';
+import MDNS from '#MDNS.js';
 
 describe(MDNS.name, () => {
   const logger = new Logger(MDNS.name, LogLevel.WARN, [new StreamHandler()]);
@@ -86,6 +86,8 @@ describe(MDNS.name, () => {
       mdns1.addEventListener(
         events.EventMDNSService.name,
         (e: events.EventMDNSService) => {
+          // Filter only for the expected service
+          if (e.detail.name !== service.name) return;
           try {
             expect(e.detail.name).toBe(service.name);
             expect(e.detail.port).toBe(service.port);

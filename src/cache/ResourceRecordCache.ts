@@ -1,17 +1,17 @@
-import type { QuestionRecord, CachableResourceRecord } from '@/dns';
-import type { CachableResourceRecordRow } from './types';
-import type { Hostname } from '@/types';
-import { CreateDestroy, ready } from '@matrixai/async-init/dist/CreateDestroy';
+import type { QuestionRecord, CachableResourceRecord } from '#dns/types.js';
+import type { CachableResourceRecordRow } from './types.js';
+import type { Hostname } from '#types.js';
+import { createDestroy } from '@matrixai/async-init';
 import { Timer } from '@matrixai/timer';
 import Table from '@matrixai/table';
 import canonicalize from 'canonicalize';
-import { QClass, QType, RType } from '@/dns';
-import * as events from './events';
-import * as utils from './utils';
-import * as errors from './errors';
+import * as events from './events.js';
+import * as utils from './utils.js';
+import * as errors from './errors.js';
+import { QClass, QType, RType } from '#dns/index.js';
 
-interface ResourceRecordCache extends CreateDestroy {}
-@CreateDestroy({
+interface ResourceRecordCache extends createDestroy.CreateDestroy {}
+@createDestroy.CreateDestroy({
   eventDestroy: events.EventResourceRecordCacheDestroy,
   eventDestroyed: events.EventResourceRecordCacheDestroyed,
 })
@@ -19,6 +19,7 @@ class ResourceRecordCache extends EventTarget {
   protected resourceRecordCache: Table<CachableResourceRecordRow> = new Table(
     ['name', 'type', 'class', 'data', 'ttl', 'relatedHostname', 'timestamp'],
     [
+      // @ts-ignore: canonicalize has an incorrect default export that ESM misinterprets
       [['name', 'type', 'class', 'data'], (...vs) => canonicalize(vs)], // For uniqueness
       ['name', 'type', 'class'], // For matching questions
       ['name', 'class'], // For matching questions with type ANY
@@ -36,17 +37,17 @@ class ResourceRecordCache extends EventTarget {
   protected _max: number;
   protected _timerDisabled: boolean;
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public get max(): number {
     return this._max;
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public get timerDisabled(): boolean {
     return this._timerDisabled;
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public get count(): number {
     return this.resourceRecordCache.count;
   }
@@ -75,7 +76,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCache.clearTable();
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public set(
     records: CachableResourceRecord | Array<CachableResourceRecord>,
   ): void {
@@ -136,7 +137,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public delete(
     records:
       | (QuestionRecord | CachableResourceRecord)
@@ -186,7 +187,7 @@ class ResourceRecordCache extends EventTarget {
     this.resourceRecordCacheTimerReset();
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public where(
     records:
       | (QuestionRecord | CachableResourceRecord)
@@ -217,7 +218,7 @@ class ResourceRecordCache extends EventTarget {
     return [...allFoundRowIs];
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public get(rowIs: Array<number>): Array<CachableResourceRecord> {
     const resourceRecords: Array<CachableResourceRecord> = [];
     for (const rowI of rowIs) {
@@ -228,7 +229,7 @@ class ResourceRecordCache extends EventTarget {
     return resourceRecords;
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public whereGet(
     records:
       | (QuestionRecord | CachableResourceRecord)
@@ -238,7 +239,7 @@ class ResourceRecordCache extends EventTarget {
     return this.get(allFoundRowIs);
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public getHostnameRelatedResourceRecords(
     hostname: Hostname,
   ): Array<CachableResourceRecord> {
@@ -253,7 +254,7 @@ class ResourceRecordCache extends EventTarget {
     return foundResourceRecords;
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public has(record: QuestionRecord | CachableResourceRecord): boolean {
     const indexes = ['name'];
     const keys: Array<any> = [record.name];
@@ -268,7 +269,7 @@ class ResourceRecordCache extends EventTarget {
     return this.resourceRecordCache.whereRows(indexes, keys).length > 0;
   }
 
-  @ready(new errors.ErrorCacheDestroyed())
+  @createDestroy.ready(new errors.ErrorCacheDestroyed())
   public clear() {
     this.resourceRecordCache.clearTable();
     if (this._timerDisabled) return;

@@ -9,10 +9,10 @@ import type {
   TXTRecordValue,
   PacketHeader,
   CachableResourceRecord,
-} from './types';
-import type { Hostname, Port } from '../types';
+} from './types.js';
+import type { Hostname, Port } from '../types.js';
 import { IPv6 } from 'ip-num';
-import * as errors from './errors';
+import * as errors from './errors.js';
 
 // Packet Flag Masks
 const AUTHORITATIVE_ANSWER_MASK = 0x400;

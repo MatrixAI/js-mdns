@@ -1,4 +1,15 @@
-import { fc, testProp } from '@fast-check/jest';
+import { fc, test } from '@fast-check/jest';
+import {
+  aaaaRecordArb,
+  aRecordArb,
+  cnamePtrRecordArb,
+  domainArb,
+  packetArb,
+  packetFlagsArb,
+  questionRecordArb,
+  srvRecordArb,
+  txtRecordArb,
+} from './utils.js';
 import {
   concatUInt8Array,
   ErrorDNSParse,
@@ -12,26 +23,15 @@ import {
   parsePacketFlags,
   parseQuestionRecords,
   parseResourceRecords,
-} from '@/dns';
-import {
-  aaaaRecordArb,
-  aRecordArb,
-  cnamePtrRecordArb,
-  domainArb,
-  packetArb,
-  packetFlagsArb,
-  questionRecordArb,
-  srvRecordArb,
-  txtRecordArb,
-} from './utils';
+} from '#dns/index.js';
 
 describe('dns packet parser/generator', () => {
-  testProp('labels', [domainArb], (domain) => {
+  test.prop([domainArb])('labels', (domain) => {
     const generatedLabels = generateLabels(domain);
     const labels = parseLabels(generatedLabels, generatedLabels, false);
     expect(labels.data).toEqual(domain);
   });
-  testProp('labels pointer post-label', [domainArb], (domain) => {
+  test.prop([domainArb])('labels pointer post-label', (domain) => {
     const generatedLabelsDomain = generateLabels(domain);
     const generatedLabels = concatUInt8Array(
       generatedLabelsDomain,
@@ -44,7 +44,7 @@ describe('dns packet parser/generator', () => {
     );
     expect(labels.data).toEqual(domain);
   });
-  testProp('labels pointer pre-label', [domainArb], (domain) => {
+  test.prop([domainArb])('labels pointer pre-label', (domain) => {
     const generatedLabelsDomain = generateLabels(domain);
     const generatedLabels = concatUInt8Array(
       new Uint8Array([0xc0, 0x02]),
@@ -53,9 +53,8 @@ describe('dns packet parser/generator', () => {
     const labels = parseLabels(generatedLabels, generatedLabels, true);
     expect(labels.data).toEqual(domain);
   });
-  testProp(
+  test.prop([domainArb, domainArb])(
     'labels pointer terminated label',
-    [domainArb, domainArb],
     (domain1, domain2) => {
       const generatedLabelsDomain1 = generateLabels(domain1);
       const generatedLabelsDomain2 = generateLabels(domain2, [0xc0, 0x00]);
@@ -71,14 +70,14 @@ describe('dns packet parser/generator', () => {
       expect(labels.data).toEqual(domain2 + '.' + domain1);
     },
   );
-  testProp('labels pointer recursion', [domainArb], (domain) => {
+  test.prop([domainArb])('labels pointer recursion', (domain) => {
     const generatedLabels = generateLabels(domain, [0xc0, 0x00]);
     const parser = () => {
       parseLabels(generatedLabels, generatedLabels, true);
     };
     expect(parser).toThrow(ErrorDNSParse);
   });
-  testProp('questions', [fc.array(questionRecordArb)], (questions) => {
+  test.prop([fc.array(questionRecordArb)])('questions', (questions) => {
     const generatedQuestions = generateQuestionRecords(questions);
     const parsedQuestions = parseQuestionRecords(
       generatedQuestions,
@@ -87,12 +86,12 @@ describe('dns packet parser/generator', () => {
     );
     expect(parsedQuestions.data).toEqual(questions);
   });
-  testProp('packet flags', [packetFlagsArb], (flags) => {
+  test.prop([packetFlagsArb])('packet flags', (flags) => {
     const encodedFlags = generatePacketFlags(flags);
     const decodedFlags = parsePacketFlags(encodedFlags);
     expect(decodedFlags.data).toEqual(flags);
   });
-  testProp('resource records a', [fc.array(aRecordArb)], (resourceRecords) => {
+  test.prop([fc.array(aRecordArb)])('resource records a', (resourceRecords) => {
     const generatedResourceRecords = generateResourceRecords(
       resourceRecords as any,
     );
@@ -103,9 +102,8 @@ describe('dns packet parser/generator', () => {
     );
     expect(parsedResourceRecords.data).toEqual(resourceRecords);
   });
-  testProp(
+  test.prop([fc.array(aaaaRecordArb)])(
     'resource records aaaa',
-    [fc.array(aaaaRecordArb)],
     (resourceRecords) => {
       const generatedResourceRecords = generateResourceRecords(
         resourceRecords as any,
@@ -118,9 +116,8 @@ describe('dns packet parser/generator', () => {
       expect(parsedResourceRecords.data).toEqual(resourceRecords);
     },
   );
-  testProp(
+  test.prop([fc.array(cnamePtrRecordArb)])(
     'resource records cname ptr',
-    [fc.array(cnamePtrRecordArb)],
     (resourceRecords) => {
       const generatedResourceRecords = generateResourceRecords(
         resourceRecords as any,
@@ -133,9 +130,8 @@ describe('dns packet parser/generator', () => {
       expect(parsedResourceRecords.data).toEqual(resourceRecords);
     },
   );
-  testProp(
+  test.prop([fc.array(srvRecordArb)])(
     'resource records srv',
-    [fc.array(srvRecordArb)],
     (resourceRecords) => {
       const generatedResourceRecords = generateResourceRecords(
         resourceRecords as any,
@@ -148,9 +144,8 @@ describe('dns packet parser/generator', () => {
       expect(parsedResourceRecords.data).toEqual(resourceRecords);
     },
   );
-  testProp(
+  test.prop([fc.array(txtRecordArb)])(
     'resource records txt',
-    [fc.array(txtRecordArb)],
     (resourceRecords) => {
       const generatedResourceRecords = generateResourceRecords(
         resourceRecords as any,
@@ -163,7 +158,7 @@ describe('dns packet parser/generator', () => {
       expect(parsedResourceRecords.data).toEqual(resourceRecords);
     },
   );
-  testProp('packet', [packetArb], (packet) => {
+  test.prop([packetArb])('packet', (packet) => {
     const generatedPacket = generatePacket(packet as any);
     const parsedPacket = parsePacket(generatedPacket);
     expect(parsedPacket).toEqual(packet);

@@ -12,9 +12,9 @@
  * to prevent `npm` from attempting to download unpublished packages.
  */
 
-const os = require('os');
-const childProcess = require('child_process');
-const packageJSON = require('../package.json');
+import os from 'node:os';
+import childProcess from 'node:child_process';
+import packageJSON from '../package.json' assert { type: 'json' };
 
 const platform = os.platform();
 

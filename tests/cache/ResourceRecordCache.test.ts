@@ -1,10 +1,10 @@
-import type { CachableResourceRecord, QuestionRecord } from '@/dns';
-import type { Host, Hostname } from '@/types';
-import { fc, testProp } from '@fast-check/jest';
-import { EventResourceRecordCacheExpired } from '@/cache/events';
-import { QClass, QType, RClass, RType } from '@/dns';
-import { ResourceRecordCache } from '@/cache';
-import { resourceRecordArb } from '../dns/utils';
+import type { CachableResourceRecord, QuestionRecord } from '#dns/types.js';
+import type { Host, Hostname } from '#types.js';
+import { fc, test } from '@fast-check/jest';
+import { resourceRecordArb } from '../dns/utils.js';
+import { EventResourceRecordCacheExpired } from '#cache/events.js';
+import { QClass, QType, RClass, RType } from '#dns/index.js';
+import { ResourceRecordCache } from '#cache/index.js';
 
 const MAX_RECORDS = 100;
 
@@ -90,22 +90,18 @@ describe(ResourceRecordCache.name, () => {
     expect(cache.whereGet(question)).toEqual(records);
   });
 
-  testProp(
-    'overflow',
-    [
-      fc.array(resourceRecordArb, {
-        minLength: MAX_RECORDS + 1,
-        maxLength: MAX_RECORDS + 1,
-      }),
-    ],
-    (records) => {
-      cache.set(records as CachableResourceRecord[]);
-      expect(cache.count).toEqual(MAX_RECORDS);
-      expect(
-        cache.whereGet(records[0] as CachableResourceRecord).length,
-      ).toEqual(0);
-    },
-  );
+  test.prop([
+    fc.array(resourceRecordArb, {
+      minLength: MAX_RECORDS + 1,
+      maxLength: MAX_RECORDS + 1,
+    }),
+  ])('overflow', (records) => {
+    cache.set(records as CachableResourceRecord[]);
+    expect(cache.count).toEqual(MAX_RECORDS);
+    expect(cache.whereGet(records[0] as CachableResourceRecord).length).toEqual(
+      0,
+    );
+  });
 
   test('expiry', async () => {
     const domain = 'test.local' as Hostname;

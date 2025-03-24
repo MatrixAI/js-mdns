@@ -1,4 +1,4 @@
-import type { Hostname, Port } from '@/types';
+import type { Hostname, Port } from '#types.js';
 import { fc } from '@fast-check/jest';
 import {
   PacketOpCode,
@@ -10,7 +10,7 @@ import {
   RType,
   generateIPv6,
   parseIPv6,
-} from '@/dns';
+} from '#dns/index.js';
 
 const uint32Arb = fc.integer({ min: 0, max: 4294967295 }); // 32-Bit Unsigned Integer Limits
 const uint16Arb = fc.integer({ min: 0, max: 65535 }); // 16-Bit Unsigned Integer Limits

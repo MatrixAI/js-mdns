@@ -1,4 +1,4 @@
-import * as utils from '@/utils';
+import * as utils from '#utils.js';
 
 describe('utils', () => {
   test('detect IPv4 mapped IPv6 addresses', () => {

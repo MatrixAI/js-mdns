@@ -1,10 +1,14 @@
-import path from 'path';
+import path from 'node:path';
+import url from 'node:url';
+import Module from 'node:module';
 
 interface SocketUtils {
   disableSocketMulticastAll(socketfd: number): boolean;
 }
 
-const projectRoot = path.join(__dirname, '../../');
+const require = Module.createRequire(import.meta.url);
+const dirname = url.fileURLToPath(new URL('.', import.meta.url));
+const projectRoot = path.join(dirname, '../../');
 const prebuildPath = path.join(projectRoot, 'prebuild');
 
 /**

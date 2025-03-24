@@ -7,7 +7,7 @@
 /builds
 # node-gyp
 /build
-/prebuild
+/prebuilds
 /prepublishOnly
 
 # Logs

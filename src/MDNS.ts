@@ -10,21 +10,21 @@ import type {
   SocketHostRow,
   RemoteInfo,
   FQDN,
-} from './types';
+} from './types.js';
 import type {
   CachableResourceRecord,
   Packet,
   QuestionRecord,
   ResourceRecord,
-} from './dns';
+} from './dns/types.js';
 import * as dgram from 'dgram';
 import { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
-import { StartStop, ready } from '@matrixai/async-init/dist/StartStop';
+import { startStop } from '@matrixai/async-init';
 import { PromiseCancellable } from '@matrixai/async-cancellable';
 import { Timer } from '@matrixai/timer';
 import Logger from '@matrixai/logger';
 import Table from '@matrixai/table';
-import { EventResourceRecordCacheExpired } from './cache';
+import { EventResourceRecordCacheExpired } from './cache/index.js';
 import {
   generatePacket,
   PacketOpCode,
@@ -34,18 +34,18 @@ import {
   QType,
   RCode,
   RType,
-} from './dns';
-import { ResourceRecordCache } from './cache';
-import { isCachableResourceRecord } from './dns';
-import { socketUtils } from './native';
-import * as utils from './utils';
-import * as errors from './errors';
-import * as events from './events';
+} from './dns/index.js';
+import { ResourceRecordCache } from './cache/index.js';
+import { isCachableResourceRecord } from './dns/index.js';
+import { socketUtils } from './native/index.js';
+import * as utils from './utils.js';
+import * as errors from './errors.js';
+import * as events from './events.js';
 
 const taskCancelReason = Symbol('CancelTask');
 
-interface MDNS extends StartStop {}
-@StartStop({
+interface MDNS extends startStop.StartStop {}
+@startStop.StartStop({
   eventStart: events.EventMDNSStart,
   eventStarted: events.EventMDNSStarted,
   eventStop: events.EventMDNSStop,
@@ -100,7 +100,7 @@ class MDNS {
    * This cannot be `0`.
    * Because `0` is always resolved to a specific port.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get port() {
     return this._port;
   }
@@ -109,7 +109,7 @@ class MDNS {
    * Gets the multicast groups MDNS is bound to.
    * There will always be at least 1 value.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get groups(): ReadonlyArray<Host> {
     return this._groups;
   }
@@ -118,7 +118,7 @@ class MDNS {
    * Gets the unicast flag.
    * This will be true if a socket is deemed able to receive unicast responses.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get unicast(): boolean {
     return this._unicast;
   }
@@ -127,7 +127,7 @@ class MDNS {
    * Gets the multicast hostname this socket is bound to.
    * This will always end in `.local`.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get hostname(): string {
     return this._hostname;
   }
@@ -136,7 +136,7 @@ class MDNS {
    * Gets the id used for DNS packets.
    * This is 16 bit.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get id(): number {
     return this._id;
   }
@@ -145,7 +145,7 @@ class MDNS {
    * Returns a Map of services that you have registered.
    * The Key is a FQDN.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get localServices(): ReadonlyMap<string, ServicePOJO> {
     return this._localServices;
   }
@@ -154,7 +154,7 @@ class MDNS {
    * Returns a Map of services on the network.
    * The Key is a FQDN.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public get networkServices(): ReadonlyMap<string, ServicePOJO> {
     return this._networkServices;
   }
@@ -1176,7 +1176,7 @@ class MDNS {
    * @param opts.txt - The TXT data of the service you want to register. This is represented as a key-value POJO.
    * @param opts.advertise - Allows MDNS to advertise the service on registration. Defaults to true.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public registerService({
     name,
     type,
@@ -1232,7 +1232,7 @@ class MDNS {
    * @param opts.type - The type of service you want to unregister.
    * @param opts.protocol - The protocol of service you want to unregister. This is either 'udp' or 'tcp'.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public unregisterService({
     name,
     type,
@@ -1282,7 +1282,7 @@ class MDNS {
    * @param opts.minDelay - The minimum delay between queries in seconds. Defaults to 1.
    * @param opts.maxDelay - The maximum delay between queries in seconds. Defaults to 3600 (1 hour).
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public startQuery({
     type,
     protocol,
@@ -1381,7 +1381,7 @@ class MDNS {
    * @param opts.type - The type of service you want to stop querying for.
    * @param opts.protocol - The protocol of service you want to stop querying for. This is either 'udp' or 'tcp'.
    */
-  @ready(new errors.ErrorMDNSNotRunning())
+  @startStop.ready(new errors.ErrorMDNSNotRunning())
   public stopQuery({
     type,
     protocol,

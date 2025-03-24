@@ -1,11 +1,11 @@
-import type { ServicePOJO } from './types';
+import type { ServicePOJO } from './types.js';
 import type {
   ErrorMDNSPacketParse,
   ErrorMDNSSocketInternal,
   ErrorMDNSSocketInvalidReceiveAddress,
   ErrorMDNSSocketInvalidSendAddress,
   ErrorMDNSSocketSendFailed,
-} from './errors';
+} from './errors.js';
 import { AbstractEvent } from '@matrixai/events';
 
 abstract class EventMDNS<T = null> extends AbstractEvent<T> {}

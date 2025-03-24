@@ -1,4 +1,4 @@
-import type { CachableResourceRecord } from '@/dns';
+import type { CachableResourceRecord } from '#dns/types.js';
 import { AbstractEvent } from '@matrixai/events';
 
 abstract class EventResourceRecordCache<T = null> extends AbstractEvent<T> {}

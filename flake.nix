@@ -16,7 +16,7 @@
           with pkgs;
           mkShell {
             nativeBuildInputs =
-              [ nodejs_20 nodejs.python shellcheck gitAndTools.gh clang-tools ];
+              [ nodejs_20 python310 shellcheck gitAndTools.gh clang-tools ];
             NIX_DONT_SET_RPATH = true;
             NIX_NO_SELF_RPATH = true;
             shellHook = ''

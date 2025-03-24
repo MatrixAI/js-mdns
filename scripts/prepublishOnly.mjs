@@ -15,14 +15,18 @@
  *       /README.md
  */
 
-const os = require('os');
-const fs = require('fs');
-const path = require('path');
-const process = require('process');
-const childProcess = require('child_process');
-const packageJSON = require('../package.json');
+import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import url from 'node:url';
+import process from 'node:process';
+import childProcess from 'node:child_process';
+import packageJSON from '../package.json' assert { type: 'json' };
 
 const platform = os.platform();
+const projectPath = path.dirname(
+  path.dirname(url.fileURLToPath(import.meta.url)),
+);
 
 /* eslint-disable no-console */
 async function main(argv = process.argv) {
@@ -44,9 +48,8 @@ async function main(argv = process.argv) {
   if (tag == null) {
     tag = process.env.npm_config_tag;
   }
-  const projectRoot = path.join(__dirname, '..');
-  const prebuildPath = path.join(projectRoot, 'prebuild');
-  const prepublishOnlyPath = path.join(projectRoot, 'prepublishOnly');
+  const prebuildPath = path.join(projectPath, 'prebuild');
+  const prepublishOnlyPath = path.join(projectPath, 'prepublishOnly');
   const buildNames = (await fs.promises.readdir(prebuildPath)).filter(
     (filename) => /^(?:[^-]+)-(?:[^-]+)-(?:[^-]+)$/.test(filename),
   );

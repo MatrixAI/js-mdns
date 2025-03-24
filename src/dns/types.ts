@@ -1,4 +1,4 @@
-import type { Host, Hostname, Port } from '../types';
+import type { Host, Hostname, Port } from '../types.js';
 import type {
   PacketOpCode,
   PacketType,
@@ -7,7 +7,7 @@ import type {
   RClass,
   QType,
   QClass,
-} from './utils';
+} from './utils.js';
 
 interface Parsed<T> {
   data: T;

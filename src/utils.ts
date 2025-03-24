@@ -7,12 +7,12 @@ import type {
   Port,
   PromiseDeconstructed,
   Service,
-} from './types';
-import type { StringRecord, ResourceRecord } from '@/dns';
+} from './types.js';
+import type { StringRecord, ResourceRecord } from '#dns/types.js';
 import type dgram from 'dgram';
 import os from 'os';
 import { IPv6, Validator } from 'ip-num';
-import { RType, RClass } from '@/dns';
+import { RType, RClass } from '#dns/index.js';
 
 /**
  * Is it a valid Port between 0 and 65535?

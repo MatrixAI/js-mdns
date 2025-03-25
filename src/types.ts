@@ -4,8 +4,9 @@ import type { IPv4, IPv4Mask, IPv6, IPv6Mask } from 'ip-num';
  * Opaque types are wrappers of existing types
  * that require smart constructors
  */
-type Opaque<K, T> = T & { readonly [brand]: K };
+type Opaque<K extends string, T> = T & { readonly [brand]: K };
 declare const brand: unique symbol;
+export { brand };
 
 /**
  * Generic callback

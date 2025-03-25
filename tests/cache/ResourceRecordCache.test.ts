@@ -96,6 +96,12 @@ describe(ResourceRecordCache.name, () => {
       maxLength: MAX_RECORDS + 1,
     }),
   ])('overflow', (records) => {
+    // We need unique names
+    const nameSet = new Set<string>();
+    for (const record of records) {
+      fc.pre(!nameSet.has(record.name));
+      nameSet.add(record.name);
+    }
     cache.set(records as CachableResourceRecord[]);
     expect(cache.count).toEqual(MAX_RECORDS);
     expect(cache.whereGet(records[0] as CachableResourceRecord).length).toEqual(

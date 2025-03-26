@@ -30,7 +30,7 @@ if ( -not (Test-Path -Path "${PSScriptRoot}\..\tmp\chocolatey\$nodejs\$nodejs.20
 }
 
 # Install python v3.9.12 (will use cache if exists)
-$python = "python"
+$python = "python3"
 choco install "$python" --version='3.9.12' --require-checksums -y --no-progress
 # Internalise python to cache if doesn't exist
 if ( -not (Test-Path -Path "${PSScriptRoot}\..\tmp\chocolatey\$python\$python.3.9.12.nupkg" -PathType Leaf) ) {

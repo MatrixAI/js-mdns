@@ -1,6 +1,6 @@
-import type { CachableResourceRecord } from '#dns/types.js';
+import type { CachableResourceRecord } from '../dns/types.js';
 import type { CachableResourceRecordRow } from './types.js';
-import type { Hostname } from '#types.js';
+import type { Hostname } from '../types.js';
 
 function insertionSort<T>(arr: Array<T>, compare: (a: T, b: T) => number) {
   for (let i = 1; i < arr.length; i++) {

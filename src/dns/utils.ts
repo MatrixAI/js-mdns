@@ -240,7 +240,7 @@ function generateIPv6(ip: string): Uint8Array {
     for (let i = 0; i < 8; i++) {
       dv.setUint16(i * 2, parts[i].getValue(), false);
     }
-  } catch (err) {
+  } catch {
     throw new errors.ErrorDNSGenerate('Invalid IPv6 address');
   }
 

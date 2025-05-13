@@ -1,6 +1,6 @@
-import type { QuestionRecord, CachableResourceRecord } from '#dns/types.js';
+import type { QuestionRecord, CachableResourceRecord } from '../dns/types.js';
 import type { CachableResourceRecordRow } from './types.js';
-import type { Hostname } from '#types.js';
+import type { Hostname } from '../types.js';
 import { createDestroy } from '@matrixai/async-init';
 import { Timer } from '@matrixai/timer';
 import Table from '@matrixai/table';
@@ -8,7 +8,7 @@ import canonicalize from 'canonicalize';
 import * as events from './events.js';
 import * as utils from './utils.js';
 import * as errors from './errors.js';
-import { QClass, QType, RType } from '#dns/index.js';
+import { QClass, QType, RType } from '../dns/index.js';
 
 interface ResourceRecordCache extends createDestroy.CreateDestroy {}
 @createDestroy.CreateDestroy({

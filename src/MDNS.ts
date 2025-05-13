@@ -229,7 +229,7 @@ class MDNS {
       unicastSocketClose = (await utils.bindSocket(unicastSocket, port, '::'))
         .close;
       unicast = true;
-    } catch (e) {
+    } catch {
       unicast = false;
     } finally {
       if (unicastSocketClose != null) {
@@ -271,7 +271,7 @@ class MDNS {
         unicastSocket.addListener('error', (err) =>
           this.handleSocketError(err, unicastSocket),
         );
-      } catch (e) {
+      } catch {
         await unicastSocketClose();
         unicastSocket.removeAllListeners();
         unicast = false;

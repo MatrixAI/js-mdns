@@ -48,4 +48,5 @@ git push --tags
 
 ## License
 
-js-mdns is licensed under Apache-2.0, you may read the terms of the license [here](LICENSE).
+js-mdns is licensed under Apache-2.0, you may read the terms of the license
+[here](LICENSE).
